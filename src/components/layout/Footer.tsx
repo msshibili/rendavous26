@@ -1,5 +1,5 @@
 import React from 'react';
-import { Heart, Compass, Shield, Sparkles } from 'lucide-react';
+import { Compass, Shield, Sparkles } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 export const Footer: React.FC = () => {
@@ -82,8 +82,8 @@ export const Footer: React.FC = () => {
         {/* Bottom Credits */}
         <div className="pt-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500">
           <p>© 2026 Badrul Huda Life Festival — Rendezvous 26. All rights reserved.</p>
-          <p className="flex items-center gap-1">
-            Crafted with <Heart className="w-3.5 h-3.5 text-red-500 fill-current" /> for Phytolore
+          <p className="flex items-center gap-1 text-slate-400 font-medium">
+            undo.ai.web
           </p>
         </div>
       </div>
