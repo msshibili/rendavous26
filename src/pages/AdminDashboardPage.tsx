@@ -33,7 +33,7 @@ import {
   updatePoster,
   deletePoster
 } from '../firebase/posterService';
-import { uploadPosterImage } from '../firebase/storageService';
+import { uploadPosterImage, compressImageFile } from '../firebase/storageService';
 import { generatePosterGraphic } from '../utils/posterGraphicGenerator';
 import { createSlug } from '../utils/slug';
 
@@ -115,7 +115,7 @@ export const AdminDashboardPage: React.FC = () => {
     setEditFilePreview(null);
   };
 
-  const handleEditFileSelect = (file: File) => {
+  const handleEditFileSelect = async (file: File) => {
     if (!file.type.startsWith('image/')) {
       showToast('Please select a valid image file (JPG, PNG, WebP, SVG).', 'error');
       return;
@@ -123,6 +123,13 @@ export const AdminDashboardPage: React.FC = () => {
     setEditSelectedFile(file);
     const objectUrl = URL.createObjectURL(file);
     setEditFilePreview(objectUrl);
+
+    try {
+      const compressed = (await compressImageFile(file)) as File;
+      setEditSelectedFile(compressed);
+    } catch (e) {
+      console.warn("Edit pre-compression warning:", e);
+    }
   };
 
   const handleEditPosterSubmit = async (e: React.FormEvent) => {
@@ -201,7 +208,7 @@ export const AdminDashboardPage: React.FC = () => {
     // Real-time Firestore subscription automatically handles data refresh
   };
 
-  const handleFileSelect = (file: File) => {
+  const handleFileSelect = async (file: File) => {
     if (!file.type.startsWith('image/')) {
       showToast('Please select a valid image file (JPG, PNG, WebP, SVG).', 'error');
       return;
@@ -213,6 +220,13 @@ export const AdminDashboardPage: React.FC = () => {
     setSelectedFile(file);
     const objectUrl = URL.createObjectURL(file);
     setFilePreview(objectUrl);
+
+    try {
+      const compressed = (await compressImageFile(file)) as File;
+      setSelectedFile(compressed);
+    } catch (e) {
+      console.warn("Pre-compression warning:", e);
+    }
   };
 
   const handleDragOver = (e: React.DragEvent) => {
