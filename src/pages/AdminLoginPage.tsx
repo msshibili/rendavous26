@@ -20,8 +20,17 @@ export const AdminLoginPage: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    
+    // Auto-sanitize email: trim whitespace and fix accidental double '@' typos (e.g. admin@rendezvous@gmail.com -> admin.rendezvous@gmail.com)
+    let cleanEmail = email.trim();
+    const parts = cleanEmail.split('@');
+    if (parts.length > 2) {
+      const domain = parts.pop();
+      cleanEmail = `${parts.join('.')}@${domain}`;
+    }
+
     try {
-      await login(email, password);
+      await login(cleanEmail, password);
       showToast('Welcome back, Admin!', 'success');
       navigate('/admin/dashboard');
     } catch (err: any) {
