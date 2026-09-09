@@ -1,4 +1,4 @@
-import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
+import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { storage, isFirebaseConfigured } from './config';
 
 export interface UploadProgressCallback {
@@ -66,7 +66,7 @@ export async function uploadPosterImage(
   file: File,
   onProgress?: UploadProgressCallback
 ): Promise<{ url: string; path: string }> {
-  // Automatically compress file for fast upload
+  // Compress if larger than 400KB
   const fileToUpload = (await compressImageFile(file)) as File;
 
   const now = new Date();
@@ -75,16 +75,25 @@ export async function uploadPosterImage(
   const sanitizedName = (fileToUpload.name || file.name).toLowerCase().replace(/[^\w.-]/g, '_');
   const storagePath = `posters/${year}/${month}/${Date.now()}_${sanitizedName}`;
 
+  if (onProgress) onProgress(40);
+
   const convertToDataUrl = (): Promise<{ url: string; path: string }> => {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       const reader = new FileReader();
       reader.onload = () => {
+        if (onProgress) onProgress(100);
         resolve({
           url: reader.result as string,
           path: storagePath
         });
       };
-      reader.onerror = (error) => reject(error);
+      reader.onerror = () => {
+        if (onProgress) onProgress(100);
+        resolve({
+          url: '',
+          path: storagePath
+        });
+      };
       reader.readAsDataURL(fileToUpload);
     });
   };
@@ -92,33 +101,12 @@ export async function uploadPosterImage(
   if (isFirebaseConfigured) {
     try {
       const storageRef = ref(storage, storagePath);
-      const uploadTask = uploadBytesResumable(storageRef, fileToUpload);
-
-      return await new Promise((resolve) => {
-        uploadTask.on(
-          'state_changed',
-          (snapshot) => {
-            const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-            if (onProgress) onProgress(progress);
-          },
-          async (error) => {
-            console.warn("Firebase Storage upload task warning, using instant Data URL fallback:", error);
-            const fallback = await convertToDataUrl();
-            resolve(fallback);
-          },
-          async () => {
-            try {
-              const downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
-              resolve({ url: downloadUrl, path: storagePath });
-            } catch (e) {
-              const fallback = await convertToDataUrl();
-              resolve(fallback);
-            }
-          }
-        );
-      });
+      const snapshot = await uploadBytes(storageRef, fileToUpload);
+      const downloadUrl = await getDownloadURL(snapshot.ref);
+      if (onProgress) onProgress(100);
+      return { url: downloadUrl, path: storagePath };
     } catch (err) {
-      console.warn("Firebase Storage error, using Data URL fallback:", err);
+      console.warn("Firebase Storage upload warning, using Data URL fallback:", err);
       return await convertToDataUrl();
     }
   }
