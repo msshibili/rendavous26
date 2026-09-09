@@ -3,6 +3,7 @@ import {
   doc,
   getDocs,
   getDoc,
+  setDoc,
   addDoc,
   updateDoc,
   deleteDoc,
@@ -45,19 +46,27 @@ async function seedInitialPostersIfEmpty(): Promise<void> {
   if (isSeeding || !isFirebaseConfigured) return;
   isSeeding = true;
   try {
+    const configRef = doc(db, 'system', 'config');
+    const configSnap = await getDoc(configRef);
+    if (configSnap.exists() && configSnap.data()?.isSeeded) {
+      // System was already seeded once; do not re-seed even if all posters were deleted
+      return;
+    }
+
     const postersRef = collection(db, 'posters');
     const snap = await getDocs(query(postersRef));
     if (snap.empty) {
-      console.log("Seeding initial demo posters to Firestore...");
+      console.log("Seeding initial demo posters to Firestore with fixed IDs...");
       for (const poster of INITIAL_DEMO_POSTERS) {
         const { id, ...data } = poster;
-        await addDoc(postersRef, {
+        await setDoc(doc(db, 'posters', id), {
           ...data,
           uploadedAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         });
       }
     }
+    await setDoc(configRef, { isSeeded: true, seededAt: serverTimestamp() });
   } catch (e) {
     console.warn("Seeding initial posters error:", e);
   } finally {
@@ -140,12 +149,23 @@ export function subscribeToPosters(
 
       const unsubscribe = onSnapshot(
         q,
-        (snapshot) => {
+        async (snapshot) => {
           if (snapshot.empty) {
-            seedInitialPostersIfEmpty().then(() => {
-              const local = getLocalPosters();
-              callback(filterAndSortPosters(local, options));
-            });
+            // Check if system has already been seeded
+            try {
+              const configRef = doc(db, 'system', 'config');
+              const configSnap = await getDoc(configRef);
+              if (!configSnap.exists() || !configSnap.data()?.isSeeded) {
+                await seedInitialPostersIfEmpty();
+                return;
+              }
+            } catch (e) {
+              console.warn("Error checking seed status:", e);
+            }
+
+            // Collection is empty because all posters were intentionally deleted
+            saveLocalPosters([]);
+            callback([]);
             return;
           }
 
@@ -195,8 +215,14 @@ export async function getPosters(options: PosterFilterOptions = {}): Promise<Pos
       const snapshot = await getDocs(query(postersRef));
 
       if (snapshot.empty) {
-        await seedInitialPostersIfEmpty();
-        posters = getLocalPosters();
+        const configRef = doc(db, 'system', 'config');
+        const configSnap = await getDoc(configRef);
+        if (!configSnap.exists() || !configSnap.data()?.isSeeded) {
+          await seedInitialPostersIfEmpty();
+          posters = getLocalPosters();
+        } else {
+          posters = [];
+        }
       } else {
         snapshot.forEach((docSnap) => {
           const data = docSnap.data();
