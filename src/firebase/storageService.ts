@@ -75,51 +75,55 @@ export async function uploadPosterImage(
   const sanitizedName = (fileToUpload.name || file.name).toLowerCase().replace(/[^\w.-]/g, '_');
   const storagePath = `posters/${year}/${month}/${Date.now()}_${sanitizedName}`;
 
+  const convertToDataUrl = (): Promise<{ url: string; path: string }> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        resolve({
+          url: reader.result as string,
+          path: storagePath
+        });
+      };
+      reader.onerror = (error) => reject(error);
+      reader.readAsDataURL(fileToUpload);
+    });
+  };
+
   if (isFirebaseConfigured) {
     try {
       const storageRef = ref(storage, storagePath);
       const uploadTask = uploadBytesResumable(storageRef, fileToUpload);
 
-      return new Promise((resolve, reject) => {
+      return await new Promise((resolve) => {
         uploadTask.on(
           'state_changed',
           (snapshot) => {
             const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
             if (onProgress) onProgress(progress);
           },
-          (error) => {
-            console.error("Firebase storage upload error:", error);
-            reject(error);
+          async (error) => {
+            console.warn("Firebase Storage upload task warning, using instant Data URL fallback:", error);
+            const fallback = await convertToDataUrl();
+            resolve(fallback);
           },
           async () => {
-            const downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
-            resolve({ url: downloadUrl, path: storagePath });
+            try {
+              const downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
+              resolve({ url: downloadUrl, path: storagePath });
+            } catch (e) {
+              const fallback = await convertToDataUrl();
+              resolve(fallback);
+            }
           }
         );
       });
     } catch (err) {
-      console.warn("Firebase Storage unavailable, converting to Data URL:", err);
+      console.warn("Firebase Storage error, using Data URL fallback:", err);
+      return await convertToDataUrl();
     }
   }
 
-  // Fallback to Data URL for instant local upload support
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onprogress = (e) => {
-      if (e.lengthComputable && onProgress) {
-        onProgress((e.loaded / e.total) * 100);
-      }
-    };
-    reader.onload = () => {
-      if (onProgress) onProgress(100);
-      resolve({
-        url: reader.result as string,
-        path: storagePath
-      });
-    };
-    reader.onerror = (error) => reject(error);
-    reader.readAsDataURL(fileToUpload);
-  });
+  return await convertToDataUrl();
 }
 
 export async function deletePosterImage(storagePath: string): Promise<void> {

@@ -19,7 +19,8 @@ import {
   FileImage,
   CheckCircle2,
   Loader2,
-  CloudUpload
+  CloudUpload,
+  Pencil
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
@@ -82,6 +83,93 @@ export const AdminDashboardPage: React.FC = () => {
   const [uploadProgress, setUploadProgress] = useState<number>(0);
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Edit Poster State
+  const [editingPoster, setEditingPoster] = useState<Poster | null>(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editEventName, setEditEventName] = useState('');
+  const [editCategory, setEditCategory] = useState('Events');
+  const [editDescription, setEditDescription] = useState('');
+  const [editTags, setEditTags] = useState('');
+  const [editEventDate, setEditEventDate] = useState('');
+  const [editIsFeatured, setEditIsFeatured] = useState(false);
+  const [editIsPublished, setEditIsPublished] = useState(true);
+  const [editPosterUrl, setEditPosterUrl] = useState('');
+  const [editSelectedFile, setEditSelectedFile] = useState<File | null>(null);
+  const [editFilePreview, setEditFilePreview] = useState<string | null>(null);
+  const [editSubmitting, setEditSubmitting] = useState(false);
+  const editFileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleOpenEditModal = (poster: Poster) => {
+    setEditingPoster(poster);
+    setEditTitle(poster.title);
+    setEditEventName(poster.eventName);
+    setEditCategory(poster.category || 'Events');
+    setEditDescription(poster.description || '');
+    setEditTags((poster.tags || []).join(', '));
+    setEditEventDate(poster.eventDate || '');
+    setEditIsFeatured(poster.isFeatured);
+    setEditIsPublished(poster.isPublished);
+    setEditPosterUrl(poster.posterUrl);
+    setEditSelectedFile(null);
+    setEditFilePreview(null);
+  };
+
+  const handleEditFileSelect = (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      showToast('Please select a valid image file (JPG, PNG, WebP, SVG).', 'error');
+      return;
+    }
+    setEditSelectedFile(file);
+    const objectUrl = URL.createObjectURL(file);
+    setEditFilePreview(objectUrl);
+  };
+
+  const handleEditPosterSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingPoster) return;
+    if (!editTitle.trim() || !editEventName.trim()) {
+      showToast('Please fill in Title and Event Name.', 'error');
+      return;
+    }
+
+    setEditSubmitting(true);
+    try {
+      let finalUrl = editPosterUrl;
+      if (editSelectedFile) {
+        const uploadRes = await uploadPosterImage(editSelectedFile);
+        finalUrl = uploadRes.url;
+      }
+
+      const parsedTags = editTags
+        .split(',')
+        .map((t) => t.trim().toLowerCase())
+        .filter(Boolean);
+
+      const updates: Partial<Poster> = {
+        title: editTitle.trim(),
+        slug: createSlug(editTitle.trim()),
+        eventName: editEventName.trim(),
+        category: editCategory,
+        description: editDescription.trim(),
+        tags: parsedTags,
+        eventDate: editEventDate,
+        isFeatured: editIsFeatured,
+        isPublished: editIsPublished,
+        posterUrl: finalUrl,
+        thumbnailUrl: finalUrl,
+      };
+
+      await updatePoster(editingPoster.id, updates);
+      showToast(`Poster "${editTitle.trim()}" updated successfully!`, 'success');
+      setEditingPoster(null);
+    } catch (err: any) {
+      console.error("Error updating poster:", err);
+      showToast('Failed to update poster: ' + (err?.message || 'Error'), 'error');
+    } finally {
+      setEditSubmitting(false);
+    }
+  };
 
   useEffect(() => {
     if (!user) {
@@ -507,13 +595,22 @@ export const AdminDashboardPage: React.FC = () => {
 
                     {/* Actions */}
                     <td className="py-4 px-6 text-right">
-                      <button
-                        onClick={() => handleDelete(poster.id, poster.title)}
-                        className="p-2 rounded-lg bg-red-950/60 hover:bg-red-900 text-red-400 border border-red-900/60 transition-colors"
-                        title="Delete Poster"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => handleOpenEditModal(poster)}
+                          className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-emerald-400 border border-slate-700 transition-colors"
+                          title="Edit Poster Details & Image"
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(poster.id, poster.title)}
+                          className="p-2 rounded-lg bg-red-950/60 hover:bg-red-900 text-red-400 border border-red-900/60 transition-colors"
+                          title="Delete Poster"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -901,6 +998,213 @@ export const AdminDashboardPage: React.FC = () => {
                     <>
                       <Upload className="w-4 h-4" />
                       Publish Poster
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Poster Modal */}
+      {editingPoster && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md overflow-y-auto">
+          <div className="relative bg-slate-900 border border-slate-800 w-full max-w-3xl rounded-3xl p-6 sm:p-8 shadow-2xl my-auto text-slate-100">
+            <button
+              onClick={() => setEditingPoster(null)}
+              className="absolute top-4 right-4 p-2 rounded-full bg-slate-800 text-slate-400 hover:text-white transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-6">
+              <div className="w-10 h-10 rounded-xl bg-emerald-600 flex items-center justify-center text-white shadow-md shadow-emerald-600/30">
+                <Pencil className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-xl font-black text-white">Edit Poster Publication</h3>
+                <p className="text-xs text-slate-400">Update title, category, event metadata or replace the poster artwork</p>
+              </div>
+            </div>
+
+            <form onSubmit={handleEditPosterSubmit} className="space-y-5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">
+                    Poster Title *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editTitle}
+                    onChange={(e) => setEditTitle(e.target.value)}
+                    className="w-full py-2.5 px-3.5 rounded-xl bg-slate-800 border border-slate-700 text-sm font-medium focus:outline-none focus:border-emerald-500 text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">
+                    Event / Program Name *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editEventName}
+                    onChange={(e) => setEditEventName(e.target.value)}
+                    className="w-full py-2.5 px-3.5 rounded-xl bg-slate-800 border border-slate-700 text-sm font-medium focus:outline-none focus:border-emerald-500 text-white"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">
+                    Category *
+                  </label>
+                  <select
+                    value={editCategory}
+                    onChange={(e) => setEditCategory(e.target.value)}
+                    className="w-full py-2.5 px-3.5 rounded-xl bg-slate-800 border border-slate-700 text-sm font-medium focus:outline-none focus:border-emerald-500 text-white"
+                  >
+                    <option value="Results">🏆 Results (Competition Winners / Scores)</option>
+                    <option value="Events">📅 Events (Schedule & Programs)</option>
+                    <option value="Programs">✨ Programs (Exhibitions & Workshops)</option>
+                    <option value="Announcements">📢 Announcements (Alerts & Registration)</option>
+                    <option value="Highlights">⭐ Highlights (Memories)</option>
+                    <option value="Other">📌 Other</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">
+                    Event Date
+                  </label>
+                  <input
+                    type="date"
+                    value={editEventDate}
+                    onChange={(e) => setEditEventDate(e.target.value)}
+                    className="w-full py-2.5 px-3.5 rounded-xl bg-slate-800 border border-slate-700 text-sm font-medium focus:outline-none focus:border-emerald-500 text-white"
+                  />
+                </div>
+              </div>
+
+              {/* Replace Image Option */}
+              <div className="space-y-3">
+                <label className="block text-xs font-bold uppercase tracking-wider text-emerald-400">
+                  Poster Image Graphic
+                </label>
+                <div className="flex flex-col sm:flex-row items-center gap-4 bg-slate-950 p-4 rounded-2xl border border-slate-800">
+                  <img
+                    src={editFilePreview || editPosterUrl}
+                    alt="Current Graphic"
+                    className="w-24 h-32 object-cover rounded-lg border border-slate-700 bg-slate-900"
+                  />
+                  <div className="flex-1 space-y-2 text-center sm:text-left">
+                    <div className="text-xs text-slate-400">
+                      Upload a new image file to replace current artwork:
+                    </div>
+                    <input
+                      type="file"
+                      ref={editFileInputRef}
+                      accept="image/*"
+                      onChange={(e) => e.target.files?.[0] && handleEditFileSelect(e.target.files[0])}
+                      className="hidden"
+                    />
+                    <div className="flex flex-wrap items-center gap-2 justify-center sm:justify-start">
+                      <button
+                        type="button"
+                        onClick={() => editFileInputRef.current?.click()}
+                        className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow"
+                      >
+                        Choose New Image
+                      </button>
+                      <input
+                        type="url"
+                        value={editPosterUrl}
+                        onChange={(e) => setEditPosterUrl(e.target.value)}
+                        placeholder="Or Image URL..."
+                        className="py-1.5 px-3 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 flex-1 min-w-[200px]"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Tags & Description */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">
+                    Tags (comma separated)
+                  </label>
+                  <input
+                    type="text"
+                    value={editTags}
+                    onChange={(e) => setEditTags(e.target.value)}
+                    className="w-full py-2.5 px-3.5 rounded-xl bg-slate-800 border border-slate-700 text-sm font-medium focus:outline-none focus:border-emerald-500 text-white"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">
+                    Description
+                  </label>
+                  <textarea
+                    rows={1}
+                    value={editDescription}
+                    onChange={(e) => setEditDescription(e.target.value)}
+                    className="w-full py-2 px-3.5 rounded-xl bg-slate-800 border border-slate-700 text-sm font-medium focus:outline-none focus:border-emerald-500 text-white"
+                  />
+                </div>
+              </div>
+
+              {/* Status Toggles */}
+              <div className="flex items-center gap-6 pt-2">
+                <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={editIsPublished}
+                    onChange={(e) => setEditIsPublished(e.target.checked)}
+                    className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 bg-slate-800 border-slate-700"
+                  />
+                  Published Visibility
+                </label>
+
+                <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={editIsFeatured}
+                    onChange={(e) => setEditIsFeatured(e.target.checked)}
+                    className="w-4 h-4 rounded text-amber-500 focus:ring-amber-500 bg-slate-800 border-slate-700"
+                  />
+                  Featured Highlight
+                </label>
+              </div>
+
+              {/* Modal Buttons */}
+              <div className="pt-4 border-t border-slate-800 flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setEditingPoster(null)}
+                  className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition-colors"
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={editSubmitting}
+                  className="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg shadow-emerald-600/30 transition-all flex items-center gap-2"
+                >
+                  {editSubmitting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Saving Changes...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-4 h-4" />
+                      Save Poster Changes
                     </>
                   )}
                 </button>
