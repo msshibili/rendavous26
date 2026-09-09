@@ -27,12 +27,17 @@ export const HomePage: React.FC = () => {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [fetchedPosters, fetchedStats] = await Promise.all([
-        getPosters({ isPublished: true }),
-        getPosterStats(),
-      ]);
-      setPosters(fetchedPosters);
-      setStats(fetchedStats);
+      const allPosters = await getPosters({ isPublished: false });
+      const published = allPosters.filter((p) => p.isPublished);
+      setPosters(published);
+      setStats({
+        totalPosters: allPosters.length,
+        publishedCount: published.length,
+        draftCount: allPosters.filter((p) => !p.isPublished).length,
+        featuredCount: allPosters.filter((p) => p.isFeatured).length,
+        totalDownloads: allPosters.reduce((sum, p) => sum + (p.downloadCount || 0), 0),
+        totalShares: allPosters.reduce((sum, p) => sum + (p.shareCount || 0), 0),
+      });
     } catch (err) {
       console.error('Error loading homepage data:', err);
     } finally {

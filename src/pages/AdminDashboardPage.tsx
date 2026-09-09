@@ -93,12 +93,16 @@ export const AdminDashboardPage: React.FC = () => {
   const fetchDashboardData = async () => {
     setLoading(true);
     try {
-      const [fetchedPosters, fetchedStats] = await Promise.all([
-        getPosters({ isPublished: false }), // Get all including drafts
-        getPosterStats(),
-      ]);
+      const fetchedPosters = await getPosters({ isPublished: false });
       setPosters(fetchedPosters);
-      setStats(fetchedStats);
+      setStats({
+        totalPosters: fetchedPosters.length,
+        publishedCount: fetchedPosters.filter((p) => p.isPublished).length,
+        draftCount: fetchedPosters.filter((p) => !p.isPublished).length,
+        featuredCount: fetchedPosters.filter((p) => p.isFeatured).length,
+        totalDownloads: fetchedPosters.reduce((sum, p) => sum + (p.downloadCount || 0), 0),
+        totalShares: fetchedPosters.reduce((sum, p) => sum + (p.shareCount || 0), 0),
+      });
     } catch (e) {
       console.error('Error loading admin dashboard data:', e);
     } finally {

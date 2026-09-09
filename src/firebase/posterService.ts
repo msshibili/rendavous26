@@ -46,25 +46,36 @@ export async function getPosters(options: PosterFilterOptions = {}): Promise<Pos
 
   if (isFirebaseConfigured) {
     try {
-      const postersRef = collection(db, 'posters');
-      const q = query(postersRef);
-      const snapshot = await getDocs(q);
-      
-      snapshot.forEach((docSnap) => {
-        const data = docSnap.data();
-        posters.push({
-          id: docSnap.id,
-          ...data,
-          uploadedAt: data.uploadedAt?.toDate?.() ? data.uploadedAt.toDate().toISOString() : data.uploadedAt || new Date().toISOString(),
-          updatedAt: data.updatedAt?.toDate?.() ? data.updatedAt.toDate().toISOString() : data.updatedAt || new Date().toISOString(),
-        } as Poster);
-      });
+      // Fast 1.2s timeout to prevent network stalls/lag
+      const fetchPromise = (async () => {
+        const postersRef = collection(db, 'posters');
+        const q = query(postersRef);
+        const snapshot = await getDocs(q);
+        const list: Poster[] = [];
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data();
+          list.push({
+            id: docSnap.id,
+            ...data,
+            uploadedAt: data.uploadedAt?.toDate?.() ? data.uploadedAt.toDate().toISOString() : data.uploadedAt || new Date().toISOString(),
+            updatedAt: data.updatedAt?.toDate?.() ? data.updatedAt.toDate().toISOString() : data.updatedAt || new Date().toISOString(),
+          } as Poster);
+        });
+        return list;
+      })();
 
-      if (posters.length === 0) {
+      const timeoutPromise = new Promise<Poster[]>((_, reject) =>
+        setTimeout(() => reject(new Error('Firestore timeout')), 1200)
+      );
+
+      posters = await Promise.race([fetchPromise, timeoutPromise]);
+      if (posters.length > 0) {
+        saveLocalPosters(posters);
+      } else {
         posters = getLocalPosters();
       }
     } catch (err) {
-      console.warn("Firestore fetch failed, using fallback posters:", err);
+      console.warn("Firestore fetch timed out or failed, using instant cache:", err);
       posters = getLocalPosters();
     }
   } else {
