@@ -4,35 +4,17 @@ import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || 'AIzaSyC1rt9yQbwXhG8V8VOjwzKCXserkI3hwxE',
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || 'rendavous26.firebaseapp.com',
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || 'rendavous26',
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || 'rendavous26.firebasestorage.app',
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '48136533143',
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || '1:48136533143:web:c8c4e7e7383fcc068e65d2',
 };
 
-export const isFirebaseConfigured = Boolean(
-  import.meta.env.VITE_FIREBASE_API_KEY &&
-  import.meta.env.VITE_FIREBASE_API_KEY !== 'your_api_key_here' &&
-  import.meta.env.VITE_FIREBASE_PROJECT_ID &&
-  import.meta.env.VITE_FIREBASE_PROJECT_ID !== 'your_project_id'
-);
+export const isFirebaseConfigured = true;
 
-let app;
-if (isFirebaseConfigured) {
-  app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-} else {
-  // Graceful fallback mode for instant preview
-  app = getApps().length === 0 ? initializeApp({
-    apiKey: "demo-api-key-badrul-huda",
-    authDomain: "badrul-huda-demo.firebaseapp.com",
-    projectId: "badrul-huda-demo",
-    storageBucket: "badrul-huda-demo.appspot.com",
-    messagingSenderId: "123456789",
-    appId: "1:123456789:web:demo"
-  }) : getApp();
-}
+const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
 export const auth = getAuth(app);
 export const db = getFirestore(app);
