@@ -59,6 +59,10 @@ export async function getPosters(options: PosterFilterOptions = {}): Promise<Pos
           updatedAt: data.updatedAt?.toDate?.() ? data.updatedAt.toDate().toISOString() : data.updatedAt || new Date().toISOString(),
         } as Poster);
       });
+
+      if (posters.length === 0) {
+        posters = getLocalPosters();
+      }
     } catch (err) {
       console.warn("Firestore fetch failed, using fallback posters:", err);
       posters = getLocalPosters();
