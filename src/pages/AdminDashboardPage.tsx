@@ -312,85 +312,63 @@ export const AdminDashboardPage: React.FC = () => {
       return;
     }
 
-    const submittedTitle = title.trim();
-    const submittedEvent = eventName.trim();
-    const submittedCategory = category;
-    const submittedDesc = description.trim() || `${submittedEvent} publication for Rendezvous 26.`;
-    const submittedDate = eventDate || new Date().toISOString().split('T')[0];
-    const submittedFile = selectedFile;
-    const submittedCustomUrl = customImageUrl.trim();
-    const submittedMode = uploadMode;
-    const submittedFeatured = isFeatured;
-    const submittedPublished = isPublished;
-    const submittedTags = tags.split(',').map((t) => t.trim().toLowerCase()).filter(Boolean);
-    const tempPreviewUrl = filePreview || submittedCustomUrl || previewSvg;
+    setSubmitting(true);
+    setUploadProgress(0);
 
-    // Instantly close modal and update UI with zero lag (0ms)
-    setIsModalOpen(false);
-    showToast(`Publishing "${submittedTitle}"...`, 'info');
+    try {
+      let finalPosterUrl = '';
+      let finalStoragePath = '';
 
-    const tempPoster: Poster = {
-      id: 'temp-' + Date.now(),
-      title: submittedTitle,
-      slug: createSlug(submittedTitle),
-      description: submittedDesc,
-      category: submittedCategory,
-      eventName: submittedEvent,
-      tags: submittedTags.length > 0 ? submittedTags : ['rendezvous26', submittedCategory.toLowerCase()],
-      posterUrl: tempPreviewUrl,
-      storagePath: '',
-      thumbnailUrl: tempPreviewUrl,
-      eventDate: submittedDate,
-      isFeatured: submittedFeatured,
-      isPublished: submittedPublished,
-      uploadedAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      downloadCount: 0,
-      shareCount: 0,
-    };
-
-    setPosters((prev) => [tempPoster, ...prev]);
-    resetForm();
-
-    // Process actual storage upload and Firestore document in background
-    (async () => {
-      try {
-        let finalPosterUrl = '';
-        let finalStoragePath = '';
-
-        if (submittedMode === 'upload' && submittedFile) {
-          const uploadRes = await uploadPosterImage(submittedFile);
-          finalPosterUrl = uploadRes.url;
-          finalStoragePath = uploadRes.path;
-        } else if (submittedCustomUrl) {
-          finalPosterUrl = submittedCustomUrl;
-          finalStoragePath = `posters/2026/custom/${createSlug(submittedTitle)}`;
-        } else {
-          finalPosterUrl = previewSvg;
-          finalStoragePath = `posters/2026/generated/${createSlug(submittedTitle)}.svg`;
-        }
-
-        await createPoster({
-          title: submittedTitle,
-          slug: createSlug(submittedTitle),
-          description: submittedDesc,
-          category: submittedCategory,
-          eventName: submittedEvent,
-          tags: submittedTags.length > 0 ? submittedTags : ['rendezvous26', submittedCategory.toLowerCase()],
-          posterUrl: finalPosterUrl,
-          storagePath: finalStoragePath,
-          thumbnailUrl: finalPosterUrl,
-          eventDate: submittedDate,
-          isFeatured: submittedFeatured,
-          isPublished: submittedPublished,
+      if (uploadMode === 'upload' && selectedFile) {
+        const uploadRes = await uploadPosterImage(selectedFile, (progress) => {
+          setUploadProgress(Math.round(progress));
         });
-
-        showToast(`Poster "${submittedTitle}" published successfully!`, 'success');
-      } catch (err: any) {
-        console.error("Error creating poster in background:", err);
-        showToast('Error publishing poster: ' + (err?.message || 'Upload failed'), 'error');
+        finalPosterUrl = uploadRes.url;
+        finalStoragePath = uploadRes.path;
+      } else if (customImageUrl.trim()) {
+        finalPosterUrl = customImageUrl.trim();
+        finalStoragePath = `posters/2026/custom/${createSlug(title.trim())}`;
+      } else {
+        finalPosterUrl = previewSvg || generatePosterGraphic(
+          title.trim(),
+          category,
+          eventName.trim(),
+          themeColor,
+          headlineText.trim() || category.toUpperCase()
+        );
+        finalStoragePath = `posters/2026/generated/${createSlug(title.trim())}.svg`;
       }
-    })();
+
+      const parsedTags = tags
+        .split(',')
+        .map((t) => t.trim().toLowerCase())
+        .filter(Boolean);
+
+      const created = await createPoster({
+        title: title.trim(),
+        slug: createSlug(title.trim()),
+        description: description.trim() || `${eventName.trim()} publication for Rendezvous 26.`,
+        category: category || 'Events',
+        eventName: eventName.trim(),
+        tags: parsedTags.length > 0 ? parsedTags : ['rendezvous26', (category || 'events').toLowerCase()],
+        posterUrl: finalPosterUrl,
+        storagePath: finalStoragePath,
+        thumbnailUrl: finalPosterUrl,
+        eventDate: eventDate || new Date().toISOString().split('T')[0],
+        isFeatured: Boolean(isFeatured),
+        isPublished: Boolean(isPublished),
+      });
+
+      showToast(`Poster "${created.title}" saved & published successfully!`, 'success');
+      setIsModalOpen(false);
+      resetForm();
+    } catch (err: any) {
+      console.error("Error creating poster:", err);
+      showToast('Error saving poster: ' + (err?.message || 'Upload failed'), 'error');
+    } finally {
+      setSubmitting(false);
+      setUploadProgress(0);
+    }
   };
 
   const resetForm = () => {

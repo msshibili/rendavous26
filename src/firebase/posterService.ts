@@ -288,8 +288,23 @@ export async function createPoster(
   const now = new Date().toISOString();
   const posterId = 'poster-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7);
 
+  const sanitized = {
+    title: data.title || '',
+    slug: data.slug || '',
+    description: data.description || '',
+    category: data.category || 'Events',
+    eventName: data.eventName || '',
+    tags: Array.isArray(data.tags) ? data.tags : [],
+    posterUrl: data.posterUrl || '',
+    storagePath: data.storagePath || '',
+    thumbnailUrl: data.thumbnailUrl || data.posterUrl || '',
+    eventDate: data.eventDate || new Date().toISOString().split('T')[0],
+    isFeatured: Boolean(data.isFeatured),
+    isPublished: Boolean(data.isPublished),
+  };
+
   const newPoster: Poster = {
-    ...data,
+    ...sanitized,
     id: posterId,
     uploadedAt: now,
     updatedAt: now,
@@ -301,20 +316,21 @@ export async function createPoster(
     try {
       const docRef = doc(db, 'posters', posterId);
       await setDoc(docRef, {
-        ...data,
+        ...sanitized,
         uploadedAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         downloadCount: 0,
         shareCount: 0,
       });
+      console.log("Poster created in Firestore successfully:", posterId);
     } catch (err) {
-      console.warn("Firestore createPoster failed, saving locally:", err);
+      console.error("Firestore createPoster setDoc error:", err);
     }
   }
 
   const local = getLocalPosters();
-  local.unshift(newPoster);
-  saveLocalPosters(local);
+  const updatedLocal = [newPoster, ...local.filter((p) => p.id !== posterId)];
+  saveLocalPosters(updatedLocal);
 
   return newPoster;
 }
@@ -322,11 +338,19 @@ export async function createPoster(
 export async function updatePoster(id: string, updates: Partial<Poster>): Promise<Poster> {
   const now = new Date().toISOString();
 
+  const sanitizedUpdates: Record<string, any> = {};
+  Object.keys(updates).forEach((key) => {
+    const val = (updates as any)[key];
+    if (val !== undefined) {
+      sanitizedUpdates[key] = val;
+    }
+  });
+
   if (isFirebaseConfigured) {
     try {
       const docRef = doc(db, 'posters', id);
       await updateDoc(docRef, {
-        ...updates,
+        ...sanitizedUpdates,
         updatedAt: serverTimestamp(),
       });
     } catch (err) {
@@ -339,7 +363,7 @@ export async function updatePoster(id: string, updates: Partial<Poster>): Promis
   if (index !== -1) {
     local[index] = {
       ...local[index],
-      ...updates,
+      ...sanitizedUpdates,
       updatedAt: now,
     };
     saveLocalPosters(local);
