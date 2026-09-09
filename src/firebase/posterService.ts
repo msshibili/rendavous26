@@ -286,10 +286,11 @@ export async function createPoster(
   data: Omit<Poster, 'id' | 'uploadedAt' | 'updatedAt' | 'downloadCount' | 'shareCount'>
 ): Promise<Poster> {
   const now = new Date().toISOString();
+  const posterId = 'poster-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7);
 
   const newPoster: Poster = {
     ...data,
-    id: 'poster-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
+    id: posterId,
     uploadedAt: now,
     updatedAt: now,
     downloadCount: 0,
@@ -298,14 +299,14 @@ export async function createPoster(
 
   if (isFirebaseConfigured) {
     try {
-      const docRef = await addDoc(collection(db, 'posters'), {
+      const docRef = doc(db, 'posters', posterId);
+      await setDoc(docRef, {
         ...data,
         uploadedAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         downloadCount: 0,
         shareCount: 0,
       });
-      newPoster.id = docRef.id;
     } catch (err) {
       console.warn("Firestore createPoster failed, saving locally:", err);
     }
