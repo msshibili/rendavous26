@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, Sparkles, Trophy, Calendar, Download, Share2, ArrowRight, Layers, Filter } from 'lucide-react';
 import type { Poster, PosterStats } from '../types/poster';
-import { getPosters, getPosterStats } from '../firebase/posterService';
+import { getPosters, getPosterStats, subscribeToPosters } from '../firebase/posterService';
 import { PosterCard } from '../components/poster/PosterCard';
 import { PosterModal } from '../components/poster/PosterModal';
 
@@ -24,30 +24,31 @@ export const HomePage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [selectedPoster, setSelectedPoster] = useState<Poster | null>(null);
 
-  const loadData = async () => {
-    setLoading(true);
-    try {
-      const allPosters = await getPosters({ isPublished: false });
-      const published = allPosters.filter((p) => p.isPublished);
-      setPosters(published);
-      setStats({
-        totalPosters: allPosters.length,
-        publishedCount: published.length,
-        draftCount: allPosters.filter((p) => !p.isPublished).length,
-        featuredCount: allPosters.filter((p) => p.isFeatured).length,
-        totalDownloads: allPosters.reduce((sum, p) => sum + (p.downloadCount || 0), 0),
-        totalShares: allPosters.reduce((sum, p) => sum + (p.shareCount || 0), 0),
-      });
-    } catch (err) {
-      console.error('Error loading homepage data:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    loadData();
+    setLoading(true);
+    const unsubscribe = subscribeToPosters(
+      (allPosters) => {
+        const published = allPosters.filter((p) => p.isPublished);
+        setPosters(published);
+        setStats({
+          totalPosters: allPosters.length,
+          publishedCount: published.length,
+          draftCount: allPosters.filter((p) => !p.isPublished).length,
+          featuredCount: allPosters.filter((p) => p.isFeatured).length,
+          totalDownloads: allPosters.reduce((sum, p) => sum + (p.downloadCount || 0), 0),
+          totalShares: allPosters.reduce((sum, p) => sum + (p.shareCount || 0), 0),
+        });
+        setLoading(false);
+      },
+      { isPublished: false }
+    );
+
+    return () => unsubscribe();
   }, []);
+
+  const loadData = () => {
+    // Real-time Firestore subscription automatically handles stats update
+  };
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -198,7 +199,7 @@ export const HomePage: React.FC = () => {
                     key={poster.id}
                     poster={poster}
                     onSelect={setSelectedPoster}
-                    onUpdateStats={loadData}
+
                   />
                 ))}
               </div>

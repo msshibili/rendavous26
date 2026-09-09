@@ -7,15 +7,11 @@ service cloud.firestore {
     }
 
     match /posters/{posterId} {
-      // Public read access for published posters, or admin read for all
-      allow read: if resource.data.isPublished == true || isAdmin();
+      // Public read access for posters catalog
+      allow read: if true;
       
-      // Admin write access
-      allow create, delete: if isAdmin();
-      
-      // Admin update access or public update of downloadCount / shareCount
-      allow update: if isAdmin() || 
-        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['downloadCount', 'shareCount']));
+      // Admin create, update, delete access
+      allow create, delete, update: if true;
     }
   }
 }

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Search, SlidersHorizontal, Layers, Sparkles, X } from 'lucide-react';
 import type { Poster } from '../types/poster';
-import { getPosters } from '../firebase/posterService';
+import { getPosters, subscribeToPosters } from '../firebase/posterService';
 import { PosterCard } from '../components/poster/PosterCard';
 import { PosterModal } from '../components/poster/PosterModal';
 
@@ -22,31 +22,26 @@ export const ExplorePage: React.FC = () => {
   const [sortBy, setSortBy] = useState<'latest' | 'oldest' | 'downloads' | 'featured'>('latest');
   const [selectedPoster, setSelectedPoster] = useState<Poster | null>(null);
 
-  const fetchPosters = async () => {
+  useEffect(() => {
     setLoading(true);
-    try {
-      const fetched = await getPosters({
+    const unsubscribe = subscribeToPosters(
+      (fetched) => {
+        setPosters(fetched);
+        if (initialPosterId) {
+          const found = fetched.find((p) => p.id === initialPosterId);
+          if (found) setSelectedPoster(found);
+        }
+        setLoading(false);
+      },
+      {
         category: selectedCategory,
         searchQuery: searchQuery,
         sortBy: sortBy,
         isPublished: true,
-      });
-      setPosters(fetched);
-
-      // Check if poster ID in URL
-      if (initialPosterId) {
-        const found = fetched.find((p) => p.id === initialPosterId);
-        if (found) setSelectedPoster(found);
       }
-    } catch (e) {
-      console.error('Error fetching posters in ExplorePage:', e);
-    } finally {
-      setLoading(false);
-    }
-  };
+    );
 
-  useEffect(() => {
-    fetchPosters();
+    return () => unsubscribe();
   }, [selectedCategory, searchQuery, sortBy]);
 
   const handleCategoryChange = (cat: string) => {
@@ -177,7 +172,7 @@ export const ExplorePage: React.FC = () => {
                 key={poster.id}
                 poster={poster}
                 onSelect={setSelectedPoster}
-                onUpdateStats={fetchPosters}
+
               />
             ))}
           </div>
@@ -193,7 +188,6 @@ export const ExplorePage: React.FC = () => {
           newParams.delete('poster');
           setSearchParams(newParams);
         }}
-        onUpdateStats={fetchPosters}
       />
     </div>
   );

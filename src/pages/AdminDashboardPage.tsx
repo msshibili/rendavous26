@@ -27,6 +27,7 @@ import type { Poster, PosterStats } from '../types/poster';
 import {
   getPosters,
   getPosterStats,
+  subscribeToPosters,
   createPoster,
   updatePoster,
   deletePoster
@@ -85,29 +86,31 @@ export const AdminDashboardPage: React.FC = () => {
   useEffect(() => {
     if (!user) {
       navigate('/admin/login');
-    } else {
-      fetchDashboardData();
+      return;
     }
+
+    setLoading(true);
+    const unsubscribe = subscribeToPosters(
+      (fetchedPosters) => {
+        setPosters(fetchedPosters);
+        setStats({
+          totalPosters: fetchedPosters.length,
+          publishedCount: fetchedPosters.filter((p) => p.isPublished).length,
+          draftCount: fetchedPosters.filter((p) => !p.isPublished).length,
+          featuredCount: fetchedPosters.filter((p) => p.isFeatured).length,
+          totalDownloads: fetchedPosters.reduce((sum, p) => sum + (p.downloadCount || 0), 0),
+          totalShares: fetchedPosters.reduce((sum, p) => sum + (p.shareCount || 0), 0),
+        });
+        setLoading(false);
+      },
+      { isPublished: false }
+    );
+
+    return () => unsubscribe();
   }, [user]);
 
-  const fetchDashboardData = async () => {
-    setLoading(true);
-    try {
-      const fetchedPosters = await getPosters({ isPublished: false });
-      setPosters(fetchedPosters);
-      setStats({
-        totalPosters: fetchedPosters.length,
-        publishedCount: fetchedPosters.filter((p) => p.isPublished).length,
-        draftCount: fetchedPosters.filter((p) => !p.isPublished).length,
-        featuredCount: fetchedPosters.filter((p) => p.isFeatured).length,
-        totalDownloads: fetchedPosters.reduce((sum, p) => sum + (p.downloadCount || 0), 0),
-        totalShares: fetchedPosters.reduce((sum, p) => sum + (p.shareCount || 0), 0),
-      });
-    } catch (e) {
-      console.error('Error loading admin dashboard data:', e);
-    } finally {
-      setLoading(false);
-    }
+  const fetchDashboardData = () => {
+    // Real-time Firestore subscription automatically handles data refresh
   };
 
   const handleFileSelect = (file: File) => {

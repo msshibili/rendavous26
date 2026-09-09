@@ -7,10 +7,9 @@ import {
   updateDoc,
   deleteDoc,
   query,
-  where,
-  orderBy,
   increment,
-  serverTimestamp
+  serverTimestamp,
+  onSnapshot
 } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from './config';
 import type { Poster, PosterFilterOptions, PosterStats } from '../types/poster';
@@ -41,76 +40,64 @@ function saveLocalPosters(posters: Poster[]): void {
   }
 }
 
-export async function getPosters(options: PosterFilterOptions = {}): Promise<Poster[]> {
-  let posters: Poster[] = [];
-
-  if (isFirebaseConfigured) {
-    try {
-      // Fast 1.2s timeout to prevent network stalls/lag
-      const fetchPromise = (async () => {
-        const postersRef = collection(db, 'posters');
-        const q = query(postersRef);
-        const snapshot = await getDocs(q);
-        const list: Poster[] = [];
-        snapshot.forEach((docSnap) => {
-          const data = docSnap.data();
-          list.push({
-            id: docSnap.id,
-            ...data,
-            uploadedAt: data.uploadedAt?.toDate?.() ? data.uploadedAt.toDate().toISOString() : data.uploadedAt || new Date().toISOString(),
-            updatedAt: data.updatedAt?.toDate?.() ? data.updatedAt.toDate().toISOString() : data.updatedAt || new Date().toISOString(),
-          } as Poster);
+let isSeeding = false;
+async function seedInitialPostersIfEmpty(): Promise<void> {
+  if (isSeeding || !isFirebaseConfigured) return;
+  isSeeding = true;
+  try {
+    const postersRef = collection(db, 'posters');
+    const snap = await getDocs(query(postersRef));
+    if (snap.empty) {
+      console.log("Seeding initial demo posters to Firestore...");
+      for (const poster of INITIAL_DEMO_POSTERS) {
+        const { id, ...data } = poster;
+        await addDoc(postersRef, {
+          ...data,
+          uploadedAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
         });
-        return list;
-      })();
-
-      const timeoutPromise = new Promise<Poster[]>((_, reject) =>
-        setTimeout(() => reject(new Error('Firestore timeout')), 1200)
-      );
-
-      posters = await Promise.race([fetchPromise, timeoutPromise]);
-      if (posters.length > 0) {
-        saveLocalPosters(posters);
-      } else {
-        posters = getLocalPosters();
       }
-    } catch (err) {
-      console.warn("Firestore fetch timed out or failed, using instant cache:", err);
-      posters = getLocalPosters();
     }
-  } else {
-    posters = getLocalPosters();
+  } catch (e) {
+    console.warn("Seeding initial posters error:", e);
+  } finally {
+    isSeeding = false;
   }
+}
 
-  // Filter by published unless admin explicitly requests all
+export function filterAndSortPosters(posters: Poster[], options: PosterFilterOptions = {}): Poster[] {
+  let list = [...posters];
+
+  // Filter by published unless admin explicitly requests all (isPublished: false)
   if (options.isPublished !== false) {
-    posters = posters.filter(p => p.isPublished);
+    list = list.filter((p) => p.isPublished);
   }
 
   // Filter by category
   if (options.category && options.category !== 'All') {
-    posters = posters.filter(p => p.category.toLowerCase() === options.category?.toLowerCase());
+    list = list.filter((p) => p.category.toLowerCase() === options.category?.toLowerCase());
   }
 
   // Filter by featured
   if (options.isFeatured) {
-    posters = posters.filter(p => p.isFeatured);
+    list = list.filter((p) => p.isFeatured);
   }
 
   // Filter by eventName
   if (options.eventName) {
-    posters = posters.filter(p => p.eventName.toLowerCase().includes(options.eventName!.toLowerCase()));
+    list = list.filter((p) => p.eventName.toLowerCase().includes(options.eventName!.toLowerCase()));
   }
 
   // Search query across title, eventName, category, tags, description
   if (options.searchQuery && options.searchQuery.trim()) {
     const q = options.searchQuery.trim().toLowerCase();
-    posters = posters.filter(p => 
-      p.title.toLowerCase().includes(q) ||
-      p.eventName.toLowerCase().includes(q) ||
-      p.category.toLowerCase().includes(q) ||
-      p.description.toLowerCase().includes(q) ||
-      (p.tags && p.tags.some(tag => tag.toLowerCase().includes(q)))
+    list = list.filter(
+      (p) =>
+        p.title.toLowerCase().includes(q) ||
+        p.eventName.toLowerCase().includes(q) ||
+        p.category.toLowerCase().includes(q) ||
+        p.description.toLowerCase().includes(q) ||
+        (p.tags && p.tags.some((tag) => tag.toLowerCase().includes(q)))
     );
   }
 
@@ -118,29 +105,128 @@ export async function getPosters(options: PosterFilterOptions = {}): Promise<Pos
   if (options.sortBy) {
     switch (options.sortBy) {
       case 'latest':
-        posters.sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
+        list.sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
         break;
       case 'oldest':
-        posters.sort((a, b) => new Date(a.uploadedAt).getTime() - new Date(b.uploadedAt).getTime());
+        list.sort((a, b) => new Date(a.uploadedAt).getTime() - new Date(b.uploadedAt).getTime());
         break;
       case 'downloads':
-        posters.sort((a, b) => b.downloadCount - a.downloadCount);
+        list.sort((a, b) => (b.downloadCount || 0) - (a.downloadCount || 0));
         break;
       case 'featured':
-        posters.sort((a, b) => (b.isFeatured ? 1 : 0) - (a.isFeatured ? 1 : 0));
+        list.sort((a, b) => (b.isFeatured ? 1 : 0) - (a.isFeatured ? 1 : 0));
         break;
     }
   } else {
     // Default newest first
-    posters.sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
+    list.sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
   }
 
-  return posters;
+  return list;
+}
+
+/**
+ * Real-time subscription to posters collection in Firestore.
+ * Automatically notifies callback when posters are added, modified, or removed across devices.
+ */
+export function subscribeToPosters(
+  callback: (posters: Poster[]) => void,
+  options: PosterFilterOptions = {}
+): () => void {
+  if (isFirebaseConfigured) {
+    try {
+      const postersRef = collection(db, 'posters');
+      const q = query(postersRef);
+
+      const unsubscribe = onSnapshot(
+        q,
+        (snapshot) => {
+          if (snapshot.empty) {
+            seedInitialPostersIfEmpty().then(() => {
+              const local = getLocalPosters();
+              callback(filterAndSortPosters(local, options));
+            });
+            return;
+          }
+
+          const list: Poster[] = [];
+          snapshot.forEach((docSnap) => {
+            const data = docSnap.data();
+            list.push({
+              id: docSnap.id,
+              ...data,
+              uploadedAt: data.uploadedAt?.toDate?.()
+                ? data.uploadedAt.toDate().toISOString()
+                : data.uploadedAt || new Date().toISOString(),
+              updatedAt: data.updatedAt?.toDate?.()
+                ? data.updatedAt.toDate().toISOString()
+                : data.updatedAt || new Date().toISOString(),
+            } as Poster);
+          });
+
+          saveLocalPosters(list);
+          callback(filterAndSortPosters(list, options));
+        },
+        (error) => {
+          console.warn("Firestore snapshot listener warning, using local cache:", error);
+          const local = getLocalPosters();
+          callback(filterAndSortPosters(local, options));
+        }
+      );
+
+      return unsubscribe;
+    } catch (e) {
+      console.warn("Error setting up Firestore listener:", e);
+    }
+  }
+
+  // Fallback if Firebase not configured
+  const local = getLocalPosters();
+  callback(filterAndSortPosters(local, options));
+  return () => {};
+}
+
+export async function getPosters(options: PosterFilterOptions = {}): Promise<Poster[]> {
+  let posters: Poster[] = [];
+
+  if (isFirebaseConfigured) {
+    try {
+      const postersRef = collection(db, 'posters');
+      const snapshot = await getDocs(query(postersRef));
+
+      if (snapshot.empty) {
+        await seedInitialPostersIfEmpty();
+        posters = getLocalPosters();
+      } else {
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data();
+          posters.push({
+            id: docSnap.id,
+            ...data,
+            uploadedAt: data.uploadedAt?.toDate?.()
+              ? data.uploadedAt.toDate().toISOString()
+              : data.uploadedAt || new Date().toISOString(),
+            updatedAt: data.updatedAt?.toDate?.()
+              ? data.updatedAt.toDate().toISOString()
+              : data.updatedAt || new Date().toISOString(),
+          } as Poster);
+        });
+        saveLocalPosters(posters);
+      }
+    } catch (err) {
+      console.warn("Firestore getDocs warning, using instant local cache:", err);
+      posters = getLocalPosters();
+    }
+  } else {
+    posters = getLocalPosters();
+  }
+
+  return filterAndSortPosters(posters, options);
 }
 
 export async function getPosterBySlug(slug: string): Promise<Poster | null> {
   const all = await getPosters({ isPublished: false });
-  return all.find(p => p.slug === slug) || null;
+  return all.find((p) => p.slug === slug) || null;
 }
 
 export async function getPosterById(id: string): Promise<Poster | null> {
@@ -153,8 +239,12 @@ export async function getPosterById(id: string): Promise<Poster | null> {
         return {
           id: snap.id,
           ...data,
-          uploadedAt: data.uploadedAt?.toDate?.() ? data.uploadedAt.toDate().toISOString() : data.uploadedAt || new Date().toISOString(),
-          updatedAt: data.updatedAt?.toDate?.() ? data.updatedAt.toDate().toISOString() : data.updatedAt || new Date().toISOString(),
+          uploadedAt: data.uploadedAt?.toDate?.()
+            ? data.uploadedAt.toDate().toISOString()
+            : data.uploadedAt || new Date().toISOString(),
+          updatedAt: data.updatedAt?.toDate?.()
+            ? data.updatedAt.toDate().toISOString()
+            : data.updatedAt || new Date().toISOString(),
         } as Poster;
       }
     } catch (e) {
@@ -163,14 +253,14 @@ export async function getPosterById(id: string): Promise<Poster | null> {
   }
 
   const local = getLocalPosters();
-  return local.find(p => p.id === id) || null;
+  return local.find((p) => p.id === id) || null;
 }
 
 export async function createPoster(
   data: Omit<Poster, 'id' | 'uploadedAt' | 'updatedAt' | 'downloadCount' | 'shareCount'>
 ): Promise<Poster> {
   const now = new Date().toISOString();
-  
+
   const newPoster: Poster = {
     ...data,
     id: 'poster-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
@@ -218,7 +308,7 @@ export async function updatePoster(id: string, updates: Partial<Poster>): Promis
   }
 
   const local = getLocalPosters();
-  const index = local.findIndex(p => p.id === id);
+  const index = local.findIndex((p) => p.id === id);
   if (index !== -1) {
     local[index] = {
       ...local[index],
@@ -242,7 +332,7 @@ export async function deletePoster(id: string): Promise<void> {
     }
   }
 
-  const local = getLocalPosters().filter(p => p.id !== id);
+  const local = getLocalPosters().filter((p) => p.id !== id);
   saveLocalPosters(local);
 }
 
@@ -260,7 +350,7 @@ export async function incrementDownloadCount(id: string): Promise<number> {
   }
 
   const local = getLocalPosters();
-  const index = local.findIndex(p => p.id === id);
+  const index = local.findIndex((p) => p.id === id);
   if (index !== -1) {
     local[index].downloadCount += 1;
     newCount = local[index].downloadCount;
@@ -283,7 +373,7 @@ export async function incrementShareCount(id: string): Promise<number> {
   }
 
   const local = getLocalPosters();
-  const index = local.findIndex(p => p.id === id);
+  const index = local.findIndex((p) => p.id === id);
   if (index !== -1) {
     local[index].shareCount += 1;
     newCount = local[index].shareCount;
@@ -296,9 +386,9 @@ export async function getPosterStats(): Promise<PosterStats> {
   const all = await getPosters({ isPublished: false });
   return {
     totalPosters: all.length,
-    publishedCount: all.filter(p => p.isPublished).length,
-    draftCount: all.filter(p => !p.isPublished).length,
-    featuredCount: all.filter(p => p.isFeatured).length,
+    publishedCount: all.filter((p) => p.isPublished).length,
+    draftCount: all.filter((p) => !p.isPublished).length,
+    featuredCount: all.filter((p) => p.isFeatured).length,
     totalDownloads: all.reduce((sum, p) => sum + (p.downloadCount || 0), 0),
     totalShares: all.reduce((sum, p) => sum + (p.shareCount || 0), 0),
   };
