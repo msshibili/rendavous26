@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Shield,
@@ -200,6 +200,18 @@ export const AdminDashboardPage: React.FC = () => {
     }
   };
 
+  // Memoize generated SVG preview to eliminate typing lag
+  const previewSvg = useMemo(() => {
+    if (uploadMode !== 'generator') return '';
+    return generatePosterGraphic(
+      title || 'Result Poster Title',
+      category,
+      eventName || 'Event Name',
+      themeColor,
+      headlineText || category.toUpperCase()
+    );
+  }, [uploadMode, title, category, eventName, themeColor, headlineText]);
+
   const handleCreatePosterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim() || !eventName.trim()) {
@@ -212,66 +224,85 @@ export const AdminDashboardPage: React.FC = () => {
       return;
     }
 
-    setSubmitting(true);
-    setUploadProgress(0);
+    const submittedTitle = title.trim();
+    const submittedEvent = eventName.trim();
+    const submittedCategory = category;
+    const submittedDesc = description.trim() || `${submittedEvent} publication for Rendezvous 26.`;
+    const submittedDate = eventDate || new Date().toISOString().split('T')[0];
+    const submittedFile = selectedFile;
+    const submittedCustomUrl = customImageUrl.trim();
+    const submittedMode = uploadMode;
+    const submittedFeatured = isFeatured;
+    const submittedPublished = isPublished;
+    const submittedTags = tags.split(',').map((t) => t.trim().toLowerCase()).filter(Boolean);
+    const tempPreviewUrl = filePreview || submittedCustomUrl || previewSvg;
 
-    try {
-      let finalPosterUrl = '';
-      let finalStoragePath = '';
+    // Instantly close modal and update UI with zero lag (0ms)
+    setIsModalOpen(false);
+    showToast(`Publishing "${submittedTitle}"...`, 'info');
 
-      if (uploadMode === 'upload' && selectedFile) {
-        // Upload image file to Firebase Storage (with local data URL fallback)
-        const uploadRes = await uploadPosterImage(selectedFile, (progress) => {
-          setUploadProgress(Math.round(progress));
+    const tempPoster: Poster = {
+      id: 'temp-' + Date.now(),
+      title: submittedTitle,
+      slug: createSlug(submittedTitle),
+      description: submittedDesc,
+      category: submittedCategory,
+      eventName: submittedEvent,
+      tags: submittedTags.length > 0 ? submittedTags : ['rendezvous26', submittedCategory.toLowerCase()],
+      posterUrl: tempPreviewUrl,
+      storagePath: '',
+      thumbnailUrl: tempPreviewUrl,
+      eventDate: submittedDate,
+      isFeatured: submittedFeatured,
+      isPublished: submittedPublished,
+      uploadedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      downloadCount: 0,
+      shareCount: 0,
+    };
+
+    setPosters((prev) => [tempPoster, ...prev]);
+    resetForm();
+
+    // Process actual storage upload and Firestore document in background
+    (async () => {
+      try {
+        let finalPosterUrl = '';
+        let finalStoragePath = '';
+
+        if (submittedMode === 'upload' && submittedFile) {
+          const uploadRes = await uploadPosterImage(submittedFile);
+          finalPosterUrl = uploadRes.url;
+          finalStoragePath = uploadRes.path;
+        } else if (submittedCustomUrl) {
+          finalPosterUrl = submittedCustomUrl;
+          finalStoragePath = `posters/2026/custom/${createSlug(submittedTitle)}`;
+        } else {
+          finalPosterUrl = previewSvg;
+          finalStoragePath = `posters/2026/generated/${createSlug(submittedTitle)}.svg`;
+        }
+
+        await createPoster({
+          title: submittedTitle,
+          slug: createSlug(submittedTitle),
+          description: submittedDesc,
+          category: submittedCategory,
+          eventName: submittedEvent,
+          tags: submittedTags.length > 0 ? submittedTags : ['rendezvous26', submittedCategory.toLowerCase()],
+          posterUrl: finalPosterUrl,
+          storagePath: finalStoragePath,
+          thumbnailUrl: finalPosterUrl,
+          eventDate: submittedDate,
+          isFeatured: submittedFeatured,
+          isPublished: submittedPublished,
         });
-        finalPosterUrl = uploadRes.url;
-        finalStoragePath = uploadRes.path;
-      } else if (customImageUrl.trim()) {
-        finalPosterUrl = customImageUrl.trim();
-        finalStoragePath = `posters/2026/custom/${createSlug(title.trim())}`;
-      } else {
-        const graphicSvg = generatePosterGraphic(
-          title.trim(),
-          category,
-          eventName.trim(),
-          themeColor,
-          headlineText.trim() || category.toUpperCase()
-        );
-        finalPosterUrl = graphicSvg;
-        finalStoragePath = `posters/2026/generated/${createSlug(title.trim())}.svg`;
+
+        showToast(`Poster "${submittedTitle}" published successfully!`, 'success');
+      } catch (err: any) {
+        console.error("Error creating poster in background:", err);
+        showToast('Error publishing poster: ' + (err?.message || 'Upload failed'), 'error');
       }
-
-      const parsedTags = tags
-        .split(',')
-        .map((t) => t.trim().toLowerCase())
-        .filter(Boolean);
-
-      await createPoster({
-        title: title.trim(),
-        slug: createSlug(title.trim()),
-        description: description.trim() || `${eventName} publication for Rendezvous 26.`,
-        category,
-        eventName: eventName.trim(),
-        tags: parsedTags.length > 0 ? parsedTags : ['rendezvous26', category.toLowerCase()],
-        posterUrl: finalPosterUrl,
-        storagePath: finalStoragePath,
-        thumbnailUrl: finalPosterUrl,
-        eventDate: eventDate || new Date().toISOString().split('T')[0],
-        isFeatured,
-        isPublished,
-      });
-
-      showToast(`Poster "${title.trim()}" published successfully!`, 'success');
-      setIsModalOpen(false);
-      resetForm();
-      fetchDashboardData();
-    } catch (err: any) {
-      console.error("Error creating poster:", err);
-      showToast('Error creating poster: ' + (err?.message || 'Upload failed'), 'error');
-    } finally {
-      setSubmitting(false);
-      setUploadProgress(0);
-    }
+    })();
   };
 
   const resetForm = () => {
