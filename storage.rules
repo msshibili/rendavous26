@@ -1,0 +1,12 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /posters/{allPaths=**} {
+      // Public read access for published poster assets
+      allow read: if true;
+      
+      // Upload/update/delete restricted to authorized admin users
+      allow write: if request.auth != null;
+    }
+  }
+}

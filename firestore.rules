@@ -1,0 +1,21 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper function to check if request is from authenticated user
+    function isAdmin() {
+      return request.auth != null;
+    }
+
+    match /posters/{posterId} {
+      // Public read access for published posters, or admin read for all
+      allow read: if resource.data.isPublished == true || isAdmin();
+      
+      // Admin write access
+      allow create, delete: if isAdmin();
+      
+      // Admin update access or public update of downloadCount / shareCount
+      allow update: if isAdmin() || 
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['downloadCount', 'shareCount']));
+    }
+  }
+}
