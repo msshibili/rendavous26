@@ -144,7 +144,7 @@ export async function seedInitialTeamScores(): Promise<TeamScore[]> {
  */
 export async function updateTeamScores(scores: TeamScore[]): Promise<TeamScore[]> {
   // Sort by total points descending
-  const sorted = [...scores].sort((a, b) => b.points - a.points);
+  const sorted = [...scores].sort((a, b) => (Number(b.points) || 0) - (Number(a.points) || 0));
 
   // Helper for rank labels
   const getRankTag = (rank: number) => {
@@ -154,9 +154,14 @@ export async function updateTeamScores(scores: TeamScore[]): Promise<TeamScore[]
     return `${rank}th Place`;
   };
 
-  // Update lead tags based on rank
-  const updatedWithTags = sorted.map((t, idx) => ({
-    ...t,
+  // Update lead tags based on rank and sanitize all values so Firestore setDoc never fails with undefined
+  const updatedWithTags: TeamScore[] = sorted.map((t, idx) => ({
+    id: String(t.id || `team-${Date.now()}-${idx}`),
+    name: String(t.name || `Team ${idx + 1}`),
+    points: Number(t.points) || 0,
+    stagePoints: Number(t.stagePoints) || 0,
+    offStagePoints: Number(t.offStagePoints) || 0,
+    color: String(t.color || '#10B981'),
     leadTag: getRankTag(idx + 1),
     updatedAt: new Date().toISOString(),
   }));
@@ -165,10 +170,11 @@ export async function updateTeamScores(scores: TeamScore[]): Promise<TeamScore[]
     try {
       for (const team of updatedWithTags) {
         const ref = doc(db, SCORES_COLLECTION, team.id);
-        await setDoc(ref, team, { merge: true });
+        await setDoc(ref, team);
       }
+      console.log("Team scores saved to Firestore live:", updatedWithTags);
     } catch (e) {
-      console.warn("Firestore update team scores error:", e);
+      console.error("Firestore update team scores error:", e);
     }
   }
 

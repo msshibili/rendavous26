@@ -184,6 +184,7 @@ export const AdminDashboardPage: React.FC = () => {
   // Team Scores Admin State
   const [teamScores, setTeamScores] = useState<TeamScore[]>([]);
   const [savingScores, setSavingScores] = useState(false);
+  const isEditingScoresRef = useRef(false);
 
   useEffect(() => {
     if (!user) {
@@ -209,7 +210,9 @@ export const AdminDashboardPage: React.FC = () => {
     );
 
     const unsubscribeScores = subscribeToTeamScores((scores) => {
-      setTeamScores(scores);
+      if (!isEditingScoresRef.current) {
+        setTeamScores(scores);
+      }
     });
 
     return () => {
@@ -219,6 +222,7 @@ export const AdminDashboardPage: React.FC = () => {
   }, [user]);
 
   const handleScoreChange = (teamId: string, field: keyof TeamScore, value: any) => {
+    isEditingScoresRef.current = true;
     setTeamScores((prev) =>
       prev.map((t) => {
         if (t.id === teamId) {
@@ -239,7 +243,9 @@ export const AdminDashboardPage: React.FC = () => {
     e.preventDefault();
     setSavingScores(true);
     try {
-      await updateTeamScores(teamScores);
+      const updated = await updateTeamScores(teamScores);
+      setTeamScores(updated);
+      isEditingScoresRef.current = false;
       showToast('Team scores updated live on site successfully!', 'success');
     } catch (err) {
       console.error(err);
