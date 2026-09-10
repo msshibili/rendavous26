@@ -20,11 +20,13 @@ import {
   CheckCircle2,
   Loader2,
   CloudUpload,
-  Pencil
+  Pencil,
+  Trophy
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import type { Poster, PosterStats } from '../types/poster';
+import type { TeamScore } from '../types/score';
 import {
   getPosters,
   getPosterStats,
@@ -33,6 +35,7 @@ import {
   updatePoster,
   deletePoster
 } from '../firebase/posterService';
+import { subscribeToTeamScores, updateTeamScores } from '../firebase/scoreService';
 import { uploadPosterImage, compressImageFile } from '../firebase/storageService';
 import { generatePosterGraphic } from '../utils/posterGraphicGenerator';
 import { createSlug } from '../utils/slug';
@@ -178,6 +181,10 @@ export const AdminDashboardPage: React.FC = () => {
     }
   };
 
+  // Team Scores Admin State
+  const [teamScores, setTeamScores] = useState<TeamScore[]>([]);
+  const [savingScores, setSavingScores] = useState(false);
+
   useEffect(() => {
     if (!user) {
       navigate('/admin/login');
@@ -185,7 +192,7 @@ export const AdminDashboardPage: React.FC = () => {
     }
 
     setLoading(true);
-    const unsubscribe = subscribeToPosters(
+    const unsubscribePosters = subscribeToPosters(
       (fetchedPosters) => {
         setPosters(fetchedPosters);
         setStats({
@@ -201,8 +208,46 @@ export const AdminDashboardPage: React.FC = () => {
       { isPublished: false }
     );
 
-    return () => unsubscribe();
+    const unsubscribeScores = subscribeToTeamScores((scores) => {
+      setTeamScores(scores);
+    });
+
+    return () => {
+      unsubscribePosters();
+      unsubscribeScores();
+    };
   }, [user]);
+
+  const handleScoreChange = (teamId: string, field: keyof TeamScore, value: any) => {
+    setTeamScores((prev) =>
+      prev.map((t) => {
+        if (t.id === teamId) {
+          const updated = { ...t, [field]: value };
+          if (field === 'stagePoints' || field === 'offStagePoints') {
+            const stage = field === 'stagePoints' ? Number(value) || 0 : t.stagePoints || 0;
+            const offStage = field === 'offStagePoints' ? Number(value) || 0 : t.offStagePoints || 0;
+            updated.points = stage + offStage;
+          }
+          return updated;
+        }
+        return t;
+      })
+    );
+  };
+
+  const handleSaveScoresSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingScores(true);
+    try {
+      await updateTeamScores(teamScores);
+      showToast('Team scores updated live on site successfully!', 'success');
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to save team scores.', 'error');
+    } finally {
+      setSavingScores(false);
+    }
+  };
 
   const fetchDashboardData = () => {
     // Real-time Firestore subscription automatically handles data refresh
@@ -473,6 +518,116 @@ export const AdminDashboardPage: React.FC = () => {
           <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4">
             <span className="text-xs font-semibold text-purple-400 uppercase tracking-wider">Shares</span>
             <div className="text-3xl font-black text-purple-400 mt-1">{stats.totalShares}</div>
+          </div>
+        </div>
+
+        {/* Team Scores Admin Management Section */}
+        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl space-y-6">
+          <div className="flex items-center justify-between flex-wrap gap-4 border-b border-slate-800 pb-4">
+            <div>
+              <h2 className="text-xl font-black text-white flex items-center gap-2">
+                <Trophy className="w-5 h-5 text-amber-400" />
+                Edit Festival Team Scores (Live Homepage Leaderboard)
+              </h2>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Update stage & off-stage points for festival teams. Updates display live instantly across all devices.
+              </p>
+            </div>
+
+            <button
+              onClick={handleSaveScoresSubmit}
+              disabled={savingScores}
+              className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs shadow-lg shadow-amber-500/20 transition-all flex items-center gap-2 active:scale-95 disabled:opacity-50"
+            >
+              {savingScores ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Saving Scores...
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="w-4 h-4" />
+                  Save Team Scores Live
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* Teams Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {teamScores.map((team) => (
+              <div
+                key={team.id}
+                className="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-4 shadow-sm"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                    {team.leadTag || 'Team Score'}
+                  </span>
+                  <input
+                    type="color"
+                    value={team.color || '#10B981'}
+                    onChange={(e) => handleScoreChange(team.id, 'color', e.target.value)}
+                    className="w-6 h-6 rounded border-0 bg-transparent cursor-pointer"
+                    title="Change Team Accent Color"
+                  />
+                </div>
+
+                {/* Team Name */}
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                    Team Name
+                  </label>
+                  <input
+                    type="text"
+                    value={team.name}
+                    onChange={(e) => handleScoreChange(team.id, 'name', e.target.value)}
+                    className="w-full py-1.5 px-3 rounded-xl bg-slate-900 border border-slate-700 text-sm font-bold text-white focus:outline-none focus:border-amber-400"
+                  />
+                </div>
+
+                {/* Points Breakdown */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                      Stage Points
+                    </label>
+                    <input
+                      type="number"
+                      value={team.stagePoints || 0}
+                      onChange={(e) => handleScoreChange(team.id, 'stagePoints', Number(e.target.value))}
+                      className="w-full py-1.5 px-2.5 rounded-xl bg-slate-900 border border-slate-700 text-xs font-bold text-emerald-400 focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                      Off-Stage Points
+                    </label>
+                    <input
+                      type="number"
+                      value={team.offStagePoints || 0}
+                      onChange={(e) => handleScoreChange(team.id, 'offStagePoints', Number(e.target.value))}
+                      className="w-full py-1.5 px-2.5 rounded-xl bg-slate-900 border border-slate-700 text-xs font-bold text-blue-400 focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Total Points */}
+                <div className="pt-2 border-t border-slate-900 flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-400 uppercase">Total Points</span>
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      value={team.points || 0}
+                      onChange={(e) => handleScoreChange(team.id, 'points', Number(e.target.value))}
+                      className="w-20 py-1 px-2 text-right rounded-lg bg-slate-900 border border-slate-700 text-sm font-black text-amber-400 focus:outline-none focus:border-amber-400"
+                    />
+                    <span className="text-xs font-extrabold text-amber-400">PTS</span>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
 

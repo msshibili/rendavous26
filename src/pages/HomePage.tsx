@@ -2,9 +2,12 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, Sparkles, Trophy, Calendar, Download, Share2, ArrowRight, Layers, Filter } from 'lucide-react';
 import type { Poster, PosterStats } from '../types/poster';
+import type { TeamScore } from '../types/score';
 import { getPosters, getPosterStats, subscribeToPosters } from '../firebase/posterService';
+import { subscribeToTeamScores } from '../firebase/scoreService';
 import { PosterCard } from '../components/poster/PosterCard';
 import { PosterModal } from '../components/poster/PosterModal';
+import { TeamScoreboard } from '../components/score/TeamScoreboard';
 
 const CATEGORIES = ['All', 'Results', 'Events', 'Programs', 'Announcements', 'Highlights'];
 
@@ -13,6 +16,7 @@ export const HomePage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [posters, setPosters] = useState<Poster[]>([]);
+  const [teamScores, setTeamScores] = useState<TeamScore[]>([]);
   const [stats, setStats] = useState<PosterStats>({
     totalPosters: 0,
     publishedCount: 0,
@@ -26,7 +30,7 @@ export const HomePage: React.FC = () => {
 
   useEffect(() => {
     setLoading(true);
-    const unsubscribe = subscribeToPosters(
+    const unsubscribePosters = subscribeToPosters(
       (allPosters) => {
         const published = allPosters.filter((p) => p.isPublished);
         setPosters(published);
@@ -43,7 +47,14 @@ export const HomePage: React.FC = () => {
       { isPublished: false }
     );
 
-    return () => unsubscribe();
+    const unsubscribeScores = subscribeToTeamScores((scores) => {
+      setTeamScores(scores);
+    });
+
+    return () => {
+      unsubscribePosters();
+      unsubscribeScores();
+    };
   }, []);
 
   const loadData = () => {
@@ -167,8 +178,11 @@ export const HomePage: React.FC = () => {
       </section>
 
       {/* Main Content Area */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 flex-1 w-full space-y-16">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 flex-1 w-full space-y-16">
         
+        {/* Team Score Leaderboard Section */}
+        <TeamScoreboard scores={teamScores} />
+
         {/* Filtered Search Results (if user filtered or searched) */}
         {(selectedCategory !== 'All' || searchQuery.trim()) && (
           <section className="space-y-6">

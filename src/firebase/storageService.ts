@@ -6,13 +6,18 @@ export interface UploadProgressCallback {
 }
 
 /**
- * Fast client-side canvas compressor.
- * Downscales images larger than 1920px max dimension and converts to compressed WebP (quality 0.82).
- * Reduces 10-15MB raw files to ~200-300KB, making uploads 20x faster!
+ * Ultra-fast client-side canvas compressor.
+ * Downscales heavy files (camera photos, 10-15MB graphics) to 1280px max dimension & compressed WebP/JPEG (~100-200KB).
+ * Eliminates upload lag and prevents Firestore document 1MB quota crashes!
  */
-export async function compressImageFile(file: File, maxDimension = 1920, quality = 0.82): Promise<File | Blob> {
-  // SVG or small files (<400KB) don't need compression
-  if (file.type === 'image/svg+xml' || file.size < 400 * 1024) {
+export async function compressImageFile(file: File, maxDimension = 1280, quality = 0.78): Promise<File | Blob> {
+  // SVG doesn't need canvas compression
+  if (file.type === 'image/svg+xml') {
+    return file;
+  }
+
+  // Already lightweight (<150KB)
+  if (file.size < 150 * 1024) {
     return file;
   }
 
@@ -40,6 +45,9 @@ export async function compressImageFile(file: File, maxDimension = 1920, quality
       const ctx = canvas.getContext('2d');
       if (!ctx) return resolve(file);
 
+      // Smooth scaling
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
       ctx.drawImage(img, 0, 0, width, height);
 
       canvas.toBlob(
