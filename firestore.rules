@@ -13,5 +13,15 @@ service cloud.firestore {
       // Admin create, update, delete access
       allow create, delete, update: if true;
     }
+
+    match /team_scores/{scoreId} {
+      // Public read and admin update access for team scores
+      allow read, write: if true;
+    }
+
+    match /system/{configDoc} {
+      // System config access for initialization and seed check
+      allow read, write: if true;
+    }
   }
 }

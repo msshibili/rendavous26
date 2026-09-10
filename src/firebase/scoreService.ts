@@ -146,10 +146,18 @@ export async function updateTeamScores(scores: TeamScore[]): Promise<TeamScore[]
   // Sort by total points descending
   const sorted = [...scores].sort((a, b) => b.points - a.points);
 
+  // Helper for rank labels
+  const getRankTag = (rank: number) => {
+    if (rank === 1) return '1st Place • Lead';
+    if (rank === 2) return '2nd Place';
+    if (rank === 3) return '3rd Place';
+    return `${rank}th Place`;
+  };
+
   // Update lead tags based on rank
   const updatedWithTags = sorted.map((t, idx) => ({
     ...t,
-    leadTag: idx === 0 ? '1st Place • Lead' : `${idx + 1}nd Place`,
+    leadTag: getRankTag(idx + 1),
     updatedAt: new Date().toISOString(),
   }));
 
