@@ -3,6 +3,7 @@ import type { Poster } from '../../types/poster';
 import { Download, Share2, Eye, Calendar, Sparkles } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
 import { incrementDownloadCount, incrementShareCount } from '../../firebase/posterService';
+import { downloadPosterImage } from '../../utils/downloadUtils';
 
 interface PosterCardProps {
   poster: Poster;
@@ -19,16 +20,12 @@ export const PosterCard: React.FC<PosterCardProps> = ({ poster, onSelect, onUpda
       await incrementDownloadCount(poster.id);
       if (onUpdateStats) onUpdateStats();
 
-      // Download the poster graphic
-      const link = document.createElement('a');
-      link.href = poster.posterUrl;
-      link.download = `${poster.slug || 'rendezvous-poster'}.svg`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      // Download the poster graphic in JPG format
+      await downloadPosterImage(poster.posterUrl, poster.slug || poster.title, 'jpg');
 
-      showToast('Poster downloaded successfully!', 'success');
+      showToast('Poster downloaded successfully as .JPG!', 'success');
     } catch (err) {
+      console.error(err);
       showToast('Failed to download poster.', 'error');
     }
   };

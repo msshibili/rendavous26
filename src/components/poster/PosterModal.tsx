@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import type { Poster } from '../../types/poster';
-import { X, Download, Share2, Calendar, Tag, Layers, CheckCircle } from 'lucide-react';
+import { X, Download, Share2, Calendar, Tag, Layers, CheckCircle, Image as ImageIcon, Loader2 } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
 import { incrementDownloadCount, incrementShareCount } from '../../firebase/posterService';
+import { downloadPosterImage, type ExportFormat } from '../../utils/downloadUtils';
 
 interface PosterModalProps {
   poster: Poster | null;
@@ -12,24 +13,25 @@ interface PosterModalProps {
 
 export const PosterModal: React.FC<PosterModalProps> = ({ poster, onClose, onUpdateStats }) => {
   const { showToast } = useToast();
+  const [selectedFormat, setSelectedFormat] = useState<ExportFormat>('jpg');
+  const [isDownloading, setIsDownloading] = useState(false);
 
   if (!poster) return null;
 
-  const handleDownload = async () => {
+  const handleDownload = async (format: ExportFormat = selectedFormat) => {
     try {
+      setIsDownloading(true);
       await incrementDownloadCount(poster.id);
       if (onUpdateStats) onUpdateStats();
 
-      const link = document.createElement('a');
-      link.href = poster.posterUrl;
-      link.download = `${poster.slug || 'rendezvous-poster'}.svg`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      await downloadPosterImage(poster.posterUrl, poster.slug || poster.title, format);
 
-      showToast('Poster downloaded successfully!', 'success');
+      showToast(`Poster downloaded successfully as .${format.toUpperCase()}!`, 'success');
     } catch (err) {
+      console.error(err);
       showToast('Failed to download poster.', 'error');
+    } finally {
+      setIsDownloading(false);
     }
   };
 
@@ -140,23 +142,81 @@ export const PosterModal: React.FC<PosterModalProps> = ({ poster, onClose, onUpd
             )}
           </div>
 
-          {/* Download & Share Actions */}
-          <div className="flex items-center gap-3 pt-4 border-t border-slate-200">
-            <button
-              onClick={handleDownload}
-              className="flex-1 py-3 px-5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-sm shadow-md shadow-emerald-700/20 transition-all flex items-center justify-center gap-2 active:scale-95"
-            >
-              <Download className="w-4 h-4" />
-              Download High-Res
-            </button>
+          {/* Download Format Selector & Actions */}
+          <div className="space-y-3 pt-4 border-t border-slate-200">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1">
+                <ImageIcon className="w-3.5 h-3.5 text-emerald-600" />
+                Choose Download Format:
+              </span>
+            </div>
 
-            <button
-              onClick={handleShare}
-              className="py-3 px-4 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold text-sm transition-all flex items-center justify-center gap-2 active:scale-95"
-              title="Share Link"
-            >
-              <Share2 className="w-4 h-4" />
-            </button>
+            {/* Format Option Buttons */}
+            <div className="grid grid-cols-3 gap-2 bg-white p-1.5 rounded-xl border border-slate-200">
+              <button
+                type="button"
+                onClick={() => setSelectedFormat('jpg')}
+                className={`py-1.5 px-2 rounded-lg text-xs font-extrabold transition-all flex items-center justify-center gap-1 ${
+                  selectedFormat === 'jpg'
+                    ? 'bg-emerald-700 text-white shadow-sm'
+                    : 'text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                .JPG
+                <span className="text-[9px] font-normal opacity-80">(Recommended)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedFormat('png')}
+                className={`py-1.5 px-2 rounded-lg text-xs font-extrabold transition-all flex items-center justify-center gap-1 ${
+                  selectedFormat === 'png'
+                    ? 'bg-emerald-700 text-white shadow-sm'
+                    : 'text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                .PNG
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedFormat('svg')}
+                className={`py-1.5 px-2 rounded-lg text-xs font-extrabold transition-all flex items-center justify-center gap-1 ${
+                  selectedFormat === 'svg'
+                    ? 'bg-emerald-700 text-white shadow-sm'
+                    : 'text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                .SVG
+              </button>
+            </div>
+
+            {/* Main Action Buttons */}
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => handleDownload(selectedFormat)}
+                disabled={isDownloading}
+                className="flex-1 py-3 px-5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-sm shadow-md shadow-emerald-700/20 transition-all flex items-center justify-center gap-2 active:scale-95 disabled:opacity-75"
+              >
+                {isDownloading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Preparing .{selectedFormat.toUpperCase()}...
+                  </>
+                ) : (
+                  <>
+                    <Download className="w-4 h-4" />
+                    Download .{selectedFormat.toUpperCase()}
+                  </>
+                )}
+              </button>
+
+              <button
+                onClick={handleShare}
+                className="py-3 px-4 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold text-sm transition-all flex items-center justify-center gap-2 active:scale-95"
+                title="Share Link"
+              >
+                <Share2 className="w-4 h-4" />
+              </button>
+            </div>
           </div>
 
         </div>
@@ -164,3 +224,4 @@ export const PosterModal: React.FC<PosterModalProps> = ({ poster, onClose, onUpd
     </div>
   );
 };
+
