@@ -35,7 +35,7 @@ import {
   updatePoster,
   deletePoster
 } from '../firebase/posterService';
-import { subscribeToTeamScores, updateTeamScores } from '../firebase/scoreService';
+import { subscribeToTeamScores, updateTeamScores, deleteTeamScore } from '../firebase/scoreService';
 import { uploadPosterImage, compressImageFile } from '../firebase/storageService';
 import { generatePosterGraphic } from '../utils/posterGraphicGenerator';
 import { createSlug } from '../utils/slug';
@@ -247,6 +247,31 @@ export const AdminDashboardPage: React.FC = () => {
     } finally {
       setSavingScores(false);
     }
+  };
+
+  const handleDeleteTeam = async (teamId: string, teamName: string) => {
+    if (window.confirm(`Delete "${teamName}" from leaderboard?`)) {
+      try {
+        await deleteTeamScore(teamId);
+        setTeamScores((prev) => prev.filter((t) => t.id !== teamId));
+        showToast(`Team "${teamName}" removed.`, 'info');
+      } catch (e) {
+        showToast('Failed to delete team', 'error');
+      }
+    }
+  };
+
+  const handleAddTeam = () => {
+    const newTeam: TeamScore = {
+      id: `team-${Date.now()}`,
+      name: `Team ${teamScores.length + 1}`,
+      points: 0,
+      stagePoints: 0,
+      offStagePoints: 0,
+      color: '#3B82F6',
+      leadTag: 'Contender',
+    };
+    setTeamScores((prev) => [...prev, newTeam]);
   };
 
   const fetchDashboardData = () => {
@@ -534,23 +559,34 @@ export const AdminDashboardPage: React.FC = () => {
               </p>
             </div>
 
-            <button
-              onClick={handleSaveScoresSubmit}
-              disabled={savingScores}
-              className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs shadow-lg shadow-amber-500/20 transition-all flex items-center gap-2 active:scale-95 disabled:opacity-50"
-            >
-              {savingScores ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Saving Scores...
-                </>
-              ) : (
-                <>
-                  <CheckCircle2 className="w-4 h-4" />
-                  Save Team Scores Live
-                </>
-              )}
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={handleAddTeam}
+                className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs transition-all flex items-center gap-1.5"
+              >
+                <Plus className="w-4 h-4" />
+                Add Team
+              </button>
+
+              <button
+                onClick={handleSaveScoresSubmit}
+                disabled={savingScores}
+                className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs shadow-lg shadow-amber-500/20 transition-all flex items-center gap-2 active:scale-95 disabled:opacity-50"
+              >
+                {savingScores ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Saving Scores...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-4 h-4" />
+                    Save Team Scores Live
+                  </>
+                )}
+              </button>
+            </div>
           </div>
 
           {/* Teams Grid */}
@@ -558,19 +594,29 @@ export const AdminDashboardPage: React.FC = () => {
             {teamScores.map((team) => (
               <div
                 key={team.id}
-                className="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-4 shadow-sm"
+                className="bg-slate-950 border border-slate-800 rounded-2xl p-4 space-y-4 shadow-sm relative group"
               >
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
                     {team.leadTag || 'Team Score'}
                   </span>
-                  <input
-                    type="color"
-                    value={team.color || '#10B981'}
-                    onChange={(e) => handleScoreChange(team.id, 'color', e.target.value)}
-                    className="w-6 h-6 rounded border-0 bg-transparent cursor-pointer"
-                    title="Change Team Accent Color"
-                  />
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={team.color || '#10B981'}
+                      onChange={(e) => handleScoreChange(team.id, 'color', e.target.value)}
+                      className="w-5 h-5 rounded border-0 bg-transparent cursor-pointer"
+                      title="Change Team Accent Color"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteTeam(team.id, team.name)}
+                      className="p-1 rounded bg-red-950/60 hover:bg-red-900 text-red-400 border border-red-900/60 transition-colors"
+                      title="Delete Team"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
 
                 {/* Team Name */}

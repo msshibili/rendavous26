@@ -69,8 +69,10 @@ export const TeamScoreboard: React.FC<TeamScoreboardProps> = ({ scores }) => {
         </div>
       </div>
 
-      {/* Leaderboard Cards Grid */}
-      <div className="relative z-10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Leaderboard Cards Grid (Responsive 2-team head-to-head or multi-team grid) */}
+      <div className={`relative z-10 grid gap-6 ${
+        sortedScores.length <= 2 ? 'grid-cols-1 md:grid-cols-2 max-w-4xl mx-auto' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4'
+      }`}>
         {sortedScores.map((team, index) => {
           const rank = index + 1;
           const badge = getRankBadge(rank);
@@ -79,9 +81,9 @@ export const TeamScoreboard: React.FC<TeamScoreboardProps> = ({ scores }) => {
           return (
             <div
               key={team.id}
-              className={`relative bg-slate-950/80 rounded-2xl p-5 border transition-all duration-300 hover:scale-[1.02] flex flex-col justify-between ${
+              className={`relative bg-slate-950/90 rounded-3xl p-6 border transition-all duration-300 hover:scale-[1.02] flex flex-col justify-between shadow-lg ${
                 rank === 1
-                  ? 'border-amber-500/60 shadow-xl shadow-amber-500/10 ring-1 ring-amber-500/30'
+                  ? 'border-amber-500/60 shadow-amber-500/10 ring-2 ring-amber-500/30'
                   : 'border-slate-800 hover:border-slate-700'
               }`}
             >
@@ -92,49 +94,54 @@ export const TeamScoreboard: React.FC<TeamScoreboardProps> = ({ scores }) => {
                   <span>{badge.label}</span>
                 </div>
 
-                <div
-                  className="w-3 h-3 rounded-full shadow-sm"
-                  style={{ backgroundColor: team.color || '#10B981' }}
-                  title="Team Color"
-                />
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400">
+                    {team.leadTag || `#${rank}`}
+                  </span>
+                  <div
+                    className="w-3.5 h-3.5 rounded-full shadow-md"
+                    style={{ backgroundColor: team.color || '#10B981' }}
+                    title="Team Color"
+                  />
+                </div>
               </div>
 
               {/* Team Name & Main Score */}
               <div className="mb-4">
-                <h3 className="text-xl font-extrabold text-white tracking-tight mb-1">
+                <h3 className="text-2xl font-black text-white tracking-tight mb-1">
                   {team.name}
                 </h3>
                 <div className="flex items-baseline gap-2">
-                  <span className="text-4xl font-black bg-gradient-to-r from-white via-slate-100 to-slate-300 bg-clip-text text-transparent">
+                  <span className="text-5xl font-black bg-gradient-to-r from-white via-slate-100 to-slate-300 bg-clip-text text-transparent">
                     {team.points}
                   </span>
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                    PTS
+                  <span className="text-xs font-black uppercase tracking-widest text-amber-400">
+                    POINTS
                   </span>
                 </div>
               </div>
 
               {/* Points Breakdown */}
-              <div className="space-y-3 pt-3 border-t border-slate-800/80 text-xs">
+              <div className="space-y-3 pt-4 border-t border-slate-800/80 text-xs">
                 {/* Stage vs Off-Stage */}
-                <div className="grid grid-cols-2 gap-2 text-[11px] font-semibold text-slate-400">
-                  <div className="bg-slate-900/90 p-2 rounded-xl border border-slate-800">
-                    <span className="block text-[10px] text-slate-500 uppercase font-bold">Stage</span>
-                    <span className="text-white font-bold text-sm">{team.stagePoints || 0}</span>
+                <div className="grid grid-cols-2 gap-3 text-xs font-semibold text-slate-400">
+                  <div className="bg-slate-900/90 p-3 rounded-2xl border border-slate-800 text-center">
+                    <span className="block text-[10px] text-slate-400 uppercase font-bold tracking-wider mb-0.5">Stage Score</span>
+                    <span className="text-emerald-400 font-extrabold text-base">{team.stagePoints || 0}</span>
                   </div>
-                  <div className="bg-slate-900/90 p-2 rounded-xl border border-slate-800">
-                    <span className="block text-[10px] text-slate-500 uppercase font-bold">Off-Stage</span>
-                    <span className="text-white font-bold text-sm">{team.offStagePoints || 0}</span>
+                  <div className="bg-slate-900/90 p-3 rounded-2xl border border-slate-800 text-center">
+                    <span className="block text-[10px] text-slate-400 uppercase font-bold tracking-wider mb-0.5">Off-Stage</span>
+                    <span className="text-blue-400 font-extrabold text-base">{team.offStagePoints || 0}</span>
                   </div>
                 </div>
 
                 {/* Lead Bar */}
-                <div className="space-y-1">
+                <div className="space-y-1.5 pt-1">
                   <div className="flex items-center justify-between text-[10px] text-slate-400 font-bold uppercase tracking-wider">
-                    <span>Performance</span>
+                    <span>Target Progress</span>
                     <span>{percent}%</span>
                   </div>
-                  <div className="w-full h-2 bg-slate-900 rounded-full overflow-hidden p-0.5 border border-slate-800">
+                  <div className="w-full h-2.5 bg-slate-900 rounded-full overflow-hidden p-0.5 border border-slate-800">
                     <div
                       className="h-full rounded-full transition-all duration-700 ease-out"
                       style={{

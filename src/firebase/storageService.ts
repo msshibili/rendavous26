@@ -6,18 +6,13 @@ export interface UploadProgressCallback {
 }
 
 /**
- * Ultra-fast client-side canvas compressor.
- * Downscales heavy files (camera photos, 10-15MB graphics) to 1280px max dimension & compressed WebP/JPEG (~100-200KB).
- * Eliminates upload lag and prevents Firestore document 1MB quota crashes!
+ * Super-fast client-side canvas compressor.
+ * Downscales images to 960px max dimension & compressed WebP/JPEG (~30-60KB).
+ * Makes poster uploading instantaneous!
  */
-export async function compressImageFile(file: File, maxDimension = 1280, quality = 0.78): Promise<File | Blob> {
-  // SVG doesn't need canvas compression
-  if (file.type === 'image/svg+xml') {
-    return file;
-  }
-
-  // Already lightweight (<150KB)
-  if (file.size < 150 * 1024) {
+export async function compressImageFile(file: File, maxDimension = 960, quality = 0.72): Promise<File | Blob> {
+  // SVG or already tiny files (<80KB) don't need re-compression
+  if (file.type === 'image/svg+xml' || file.size < 80 * 1024) {
     return file;
   }
 
@@ -45,9 +40,8 @@ export async function compressImageFile(file: File, maxDimension = 1280, quality
       const ctx = canvas.getContext('2d');
       if (!ctx) return resolve(file);
 
-      // Smooth scaling
       ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = 'high';
+      ctx.imageSmoothingQuality = 'medium';
       ctx.drawImage(img, 0, 0, width, height);
 
       canvas.toBlob(
@@ -70,20 +64,25 @@ export async function compressImageFile(file: File, maxDimension = 1280, quality
   });
 }
 
+/**
+ * Fast poster image upload with 2-second timeout fallback to prevent any network hanging
+ */
 export async function uploadPosterImage(
   file: File,
   onProgress?: UploadProgressCallback
 ): Promise<{ url: string; path: string }> {
-  // Compress if larger than 400KB
+  if (onProgress) onProgress(20);
+
+  // Compress heavy files
   const fileToUpload = (await compressImageFile(file)) as File;
+
+  if (onProgress) onProgress(60);
 
   const now = new Date();
   const year = now.getFullYear();
   const month = String(now.getMonth() + 1).padStart(2, '0');
   const sanitizedName = (fileToUpload.name || file.name).toLowerCase().replace(/[^\w.-]/g, '_');
   const storagePath = `posters/${year}/${month}/${Date.now()}_${sanitizedName}`;
-
-  if (onProgress) onProgress(40);
 
   const convertToDataUrl = (): Promise<{ url: string; path: string }> => {
     return new Promise((resolve) => {
@@ -109,12 +108,19 @@ export async function uploadPosterImage(
   if (isFirebaseConfigured) {
     try {
       const storageRef = ref(storage, storagePath);
-      const snapshot = await uploadBytes(storageRef, fileToUpload);
+      
+      // 2.5s Timeout promise to avoid network lag when Firebase storage is slow
+      const uploadPromise = uploadBytes(storageRef, fileToUpload);
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Upload timeout fallback')), 2500)
+      );
+
+      const snapshot = (await Promise.race([uploadPromise, timeoutPromise])) as any;
       const downloadUrl = await getDownloadURL(snapshot.ref);
       if (onProgress) onProgress(100);
       return { url: downloadUrl, path: storagePath };
     } catch (err) {
-      console.warn("Firebase Storage upload warning, using Data URL fallback:", err);
+      console.warn("Fast fallback to compressed Data URL:", err);
       return await convertToDataUrl();
     }
   }

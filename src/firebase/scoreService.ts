@@ -4,17 +4,17 @@ import {
   getDocs,
   setDoc,
   updateDoc,
+  deleteDoc,
   onSnapshot,
   query,
   orderBy,
-  serverTimestamp
 } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from './config';
 import type { TeamScore } from '../types/score';
 
 const SCORES_COLLECTION = 'team_scores';
 
-// Default initial demo teams if no scores exist in DB
+// Exactly 2 Teams for the festival as requested
 export const DEFAULT_TEAM_SCORES: TeamScore[] = [
   {
     id: 'team-safa',
@@ -23,38 +23,20 @@ export const DEFAULT_TEAM_SCORES: TeamScore[] = [
     stagePoints: 195,
     offStagePoints: 150,
     color: '#10B981', // Emerald
-    leadTag: 'Overall Leader',
+    leadTag: '1st Place • Lead',
   },
   {
     id: 'team-marwa',
     name: 'Team Marwa',
-    points: 310,
-    stagePoints: 170,
+    points: 320,
+    stagePoints: 180,
     offStagePoints: 140,
     color: '#F59E0B', // Amber
     leadTag: '2nd Place',
   },
-  {
-    id: 'team-quds',
-    name: 'Team Quds',
-    points: 285,
-    stagePoints: 155,
-    offStagePoints: 130,
-    color: '#3B82F6', // Blue
-    leadTag: '3rd Place',
-  },
-  {
-    id: 'team-uhud',
-    name: 'Team Uhud',
-    points: 260,
-    stagePoints: 140,
-    offStagePoints: 120,
-    color: '#8B5CF6', // Purple
-    leadTag: '4th Place',
-  },
 ];
 
-const LOCAL_STORAGE_KEY = 'rendezvous_team_scores_v1';
+const LOCAL_STORAGE_KEY = 'rendezvous_team_scores_v2';
 
 function getLocalScores(): TeamScore[] {
   try {
@@ -167,7 +149,7 @@ export async function updateTeamScores(scores: TeamScore[]): Promise<TeamScore[]
   // Update lead tags based on rank
   const updatedWithTags = sorted.map((t, idx) => ({
     ...t,
-    leadTag: idx === 0 ? 'Overall Leader' : `#${idx + 1} Position`,
+    leadTag: idx === 0 ? '1st Place • Lead' : `${idx + 1}nd Place`,
     updatedAt: new Date().toISOString(),
   }));
 
@@ -184,4 +166,20 @@ export async function updateTeamScores(scores: TeamScore[]): Promise<TeamScore[]
 
   saveLocalScores(updatedWithTags);
   return updatedWithTags;
+}
+
+/**
+ * Delete a team score (Admin action)
+ */
+export async function deleteTeamScore(teamId: string): Promise<void> {
+  if (isFirebaseConfigured) {
+    try {
+      await deleteDoc(doc(db, SCORES_COLLECTION, teamId));
+    } catch (e) {
+      console.warn("Firestore delete team score error:", e);
+    }
+  }
+  const current = getLocalScores();
+  const filtered = current.filter((t) => t.id !== teamId);
+  saveLocalScores(filtered);
 }
