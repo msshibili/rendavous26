@@ -62,13 +62,13 @@ function saveLocalScores(scores: TeamScore[]): void {
 export async function getTeamScores(): Promise<TeamScore[]> {
   if (isFirebaseConfigured) {
     try {
-      const q = query(collection(db, SCORES_COLLECTION), orderBy('points', 'desc'));
-      const snapshot = await getDocs(q);
+      const snapshot = await getDocs(collection(db, SCORES_COLLECTION));
       if (!snapshot.empty) {
         const scores = snapshot.docs.map((docSnap) => ({
           id: docSnap.id,
           ...docSnap.data(),
         })) as TeamScore[];
+        scores.sort((a, b) => (b.points || 0) - (a.points || 0));
         saveLocalScores(scores);
         return scores;
       }
@@ -87,15 +87,15 @@ export function subscribeToTeamScores(
 ): () => void {
   if (isFirebaseConfigured) {
     try {
-      const q = query(collection(db, SCORES_COLLECTION), orderBy('points', 'desc'));
       const unsubscribe = onSnapshot(
-        q,
+        collection(db, SCORES_COLLECTION),
         (snapshot) => {
           if (!snapshot.empty) {
             const scores = snapshot.docs.map((docSnap) => ({
               id: docSnap.id,
               ...docSnap.data(),
             })) as TeamScore[];
+            scores.sort((a, b) => (b.points || 0) - (a.points || 0));
             saveLocalScores(scores);
             onUpdate(scores);
           } else {
@@ -104,7 +104,7 @@ export function subscribeToTeamScores(
           }
         },
         (error) => {
-          console.warn("Realtime team scores subscription error:", error);
+          console.error("Realtime team scores subscription error:", error);
           onUpdate(getLocalScores());
         }
       );

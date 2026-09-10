@@ -109,10 +109,10 @@ export async function uploadPosterImage(
     try {
       const storageRef = ref(storage, storagePath);
       
-      // 2.5s Timeout promise to avoid network lag when Firebase storage is slow
+      // 20s Timeout promise to allow full upload to Firebase Storage
       const uploadPromise = uploadBytes(storageRef, fileToUpload);
       const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Upload timeout fallback')), 2500)
+        setTimeout(() => reject(new Error('Storage upload timeout')), 20000)
       );
 
       const snapshot = (await Promise.race([uploadPromise, timeoutPromise])) as any;
@@ -120,7 +120,7 @@ export async function uploadPosterImage(
       if (onProgress) onProgress(100);
       return { url: downloadUrl, path: storagePath };
     } catch (err) {
-      console.warn("Fast fallback to compressed Data URL:", err);
+      console.warn("Storage upload warning, using compressed Data URL fallback:", err);
       return await convertToDataUrl();
     }
   }
